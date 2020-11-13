@@ -9,19 +9,58 @@ import sys
 
 import numpy
 import pandas as pd
+import scipy.io
+import csv
+import gzip
+from pathlib import Path
 
 import splotch
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
-def prepare_count_files(count_files,suffix='.unified.tsv',minimum_detection_rate=0.02):
-
-  # read count files
+def st_prepare_count_files(count_files, suffix, minimum_detection_rate):
+  # Read count files
   logging.info('Reading %d count files'%(len(count_files)))
   frames = [pd.read_table(filename,header=0,index_col=0) for filename in count_files]
+
+  prepare_count_files(count_files, frames, suffix, minimum_detection_rate)
+
+def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate):
+  # Assemble count matrix dataframe from components in output directories:
+  frames = []
+  count_files = []
+  for srd in spaceranger_dirs:
+
+    matrix_dir = os.path.join(srd, "outs/filtered_feature_bc_matrix/")
+    mat = scipy.io.mmread(os.path.join(matrix_dir, "matrix.mtx.gz"))
+
+    features_path = os.path.join(matrix_dir, "features.tsv.gz")
+    feature_ids = [row[0] for row in csv.reader(gzip.open(features_path, "rt"), delimiter="\t")]
+
+    barcodes_path = os.path.join(matrix_dir, "barcodes.tsv.gz")
+    barcodes = [row[0] for row in csv.reader(gzip.open(barcodes_path, "rt"), delimiter="\t")]
+
+    # Translate spot barcodes into pseudo-hex coordinates
+    positions_path = os.path.join(srd, "outs/spatial/tissue_positions_list.csv")
+    positions = pd.read_csv(positions_path, index_col=0, header=None,
+      names=["in_tissue", "array_row", "array_col", "pixel_row", "pixel_col"])
+
+    positions_list = []
+    for b in barcodes:
+      xcoor = positions.loc[b,'array_col']
+      ycoor = positions.loc[b,'array_row']
+      positions_list.append('%d_%d' % (xcoor, ycoor))
+
+    df = pd.DataFrame.sparse.from_spmatrix(mat, index=feature_ids, columns=positions_list)
+    frames.append(df)
+    count_files.append(os.path.join(srd, Path(srd).name))
+
+  prepare_count_files(count_files, frames, suffix, minimum_detection_rate)
   
-  # construct the multi index
-  for filename,frame in  zip(count_files,frames):
+def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_detection_rate=0.02):
+  print(count_files)
+  # Construct the multi index
+  for filename,frame in zip(count_files,frames):
   	frame.columns = pd.MultiIndex.from_product([[filename],frame.columns],names=['Sample','Coordinate'])
   	frame.index.name = 'Gene'
   
@@ -40,7 +79,7 @@ def prepare_count_files(count_files,suffix='.unified.tsv',minimum_detection_rate
   
   # write the modified count files back to the disk
   for filename in result.columns.levels[0]:
-  	result[filename].to_csv(filename+suffix,sep='\t',index=True)
+    result[filename].to_csv(filename+suffix,sep='\t',index=True)
 
 if __name__ == '__main__':
 
@@ -58,13 +97,19 @@ if __name__ == '__main__':
                       default=0.02,help='minimum detection rate (default is 0.02)')
   parser.add_argument('-v','--version',action='version',
                       version='%s %s'%(parser.prog,splotch.__version__))
+  parser.add_argument('-V','--Visium',action='store_true',required=False,
+                      help='output in Visium format (default is standard ST)')
 
   options = parser.parse_args()
 
   # check that the supplied read count files exist
   for filename in options.count_files:
-    if not os.path.isfile(filename):
+    if not options.Visium and not os.path.isfile(filename):
       logging.critical('Count file %s does not exist!'%(filename))
+      sys.exit(1)
+
+    if options.Visium and not os.path.isdir(filename):
+      logging.critical('Spaceranger directory %s does not exist!'%(filename))
       sys.exit(1)
 
   # check that the minimum detection rate is valid
@@ -72,6 +117,9 @@ if __name__ == '__main__':
     logging.critical('Minimum detection rate should be between 0 and 1!')
     sys.exit(1)
 
-  prepare_count_files(options.count_files,options.suffix,options.minimum_detection_rate)
+  if not options.Visium:
+    st_prepare_count_files(options.count_files, options.suffix, options.minimum_detection_rate)
+  else:
+    visium_prepare_count_files(options.count_files, options.suffix, options.minimum_detection_rate)
 
   sys.exit(0)
