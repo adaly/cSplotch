@@ -7,6 +7,7 @@ import os
 import pickle
 import logging
 import argparse
+import pathlib
 
 import numpy
 import pandas as pd
@@ -20,12 +21,16 @@ from splotch.utils import get_variable_mappings, watershed_tissue_sections, \
   detect_tissue_sections, get_spot_adjacency_matrix, get_counts, \
   generate_W_sparse, generate_column_labels, generate_dictionary, \
   get_tissue_section_spots, filter_arrays, n_elements_per_level, to_rdump
+from splotch.utils_visium import unique_annots_loupe, read_annot_matrix_loupe, \
+  detect_tissue_sections_hex, get_tissue_section_spots_hex, \
+  get_spot_adjacency_matrix_hex
 
 def generate_splotch_inputs(count_files,metadata_file,
                             maximum_number_of_spots_per_tissue_section,
                             median_sequencing_depth,
                             n_levels,minimum_sequencing_depth,
-                            output_directory,car,zip):
+                            output_directory,car,zip,
+                            Visium=False):
 
   # initialize a bunch of variables for keeping tissue section specific data
   aar_matrix_list = []
@@ -39,7 +44,7 @@ def generate_splotch_inputs(count_files,metadata_file,
   W_list = []
   W_n_list = []
   files_list = []
-  
+
   # read metadata file
   logging.info('Reading metadata')
   metadata = pd.read_csv(metadata_file,header=0,sep='\t')
@@ -88,8 +93,11 @@ def generate_splotch_inputs(count_files,metadata_file,
 
   # get gene symbols and AAR names
   genes,_,_,_,_ = read_array(count_files[0])
-  annotation_filename = metadata[metadata['Count file'] == count_files[0]]['Annotation file'].values[0]
-  _,aar_names = read_aar_matrix(annotation_filename)
+  if not Visium:
+    annotation_filename = metadata[metadata['Count file'] == count_files[0]]['Annotation file'].values[0]
+    _,aar_names = read_aar_matrix(annotation_filename)
+  else:
+    aar_names = unique_annots_loupe(metadata[:]['Annotation file'].values)
 
   # get the number of genes
   N_genes = len(genes)
@@ -120,13 +128,19 @@ def generate_splotch_inputs(count_files,metadata_file,
   
       # read the spot annotations
       annotation_filename = metadata[metadata['Count file'] == filename]['Annotation file'].values[0]
-      array_aar_matrix,array_aar_names = read_aar_matrix(annotation_filename)
+      
+      if not Visium:
+        array_aar_matrix,array_aar_names = read_aar_matrix(annotation_filename)
 
-      if not numpy.array_equal(array_aar_names,aar_names):
-        logging.critical('Mismatch with AAR names! Order of the AARs must match!')
-        sys.exit(1)
+        if not numpy.array_equal(array_aar_names,aar_names):
+          logging.critical('Mismatch with AAR names! Order of the AARs must match!')
+          sys.exit(1)
+      else:
+        spaceranger_dir = metadata[metadata['Count file'] == filename]['Spaceranger output'].values[0]
+        position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions_list.csv")
+        array_aar_matrix = read_annot_matrix_loupe(annotation_filename, position_file, aar_names)
   
-      # find spots with enoguh UMIs
+      # find spots with enough UMIs
       good_spots = array_counts_per_spot >= minimum_sequencing_depth
 
       # .. additionally find the spots without annotations
@@ -155,15 +169,23 @@ def generate_splotch_inputs(count_files,metadata_file,
       logging.info('Detecting tissue sections on the array')
       # detect distinct tissue sections on the slide and
       # try to separate overlapping tissue sections
-      tissue_section_labels,spots_tissue_section_labeled = \
-        detect_tissue_sections(array_coordinates_float,True,maximum_number_of_spots_per_tissue_section)
+      if not Visium:
+        tissue_section_labels,spots_tissue_section_labeled = \
+          detect_tissue_sections(array_coordinates_float,True,maximum_number_of_spots_per_tissue_section)
+      else:
+        tissue_section_labels,spots_tissue_section_labeled = \
+          detect_tissue_sections_hex(array_coordinates_float,True,maximum_number_of_spots_per_tissue_section)
   
       # loop over the detected tissue sections on the slide
       for tissue_idx in tissue_section_labels:
         # get the indices of the spots assigned to the current
         # tissue section
-        tissue_section_spots = get_tissue_section_spots(tissue_idx,array_coordinates_float,
-                                                        spots_tissue_section_labeled)
+        if not Visium:
+          tissue_section_spots = get_tissue_section_spots(tissue_idx,array_coordinates_float,
+                                                          spots_tissue_section_labeled)
+        else:
+          tissue_section_spots = get_tissue_section_spots_hex(tissue_idx,array_coordinates_float,
+                                                              spots_tissue_section_labeled)
 
         # get the coordinates of the spots assigned to the current tissue section
         # get the counts of the spots assigned to the current tissue section
@@ -179,7 +201,10 @@ def generate_splotch_inputs(count_files,metadata_file,
         if car:
           # get the spot adjacency matrix of the spots
           # on the current tissue section
-          tissue_section_W = get_spot_adjacency_matrix(tissue_section_coordinates_float)
+          if not Visium:
+            tissue_section_W = get_spot_adjacency_matrix(tissue_section_coordinates_float)
+          else:
+            tissue_section_W = get_spot_adjacency_matrix_hex(tissue_section_coordinates_float)
   
           # CAR prior will break if there are spots without neighbors,
           # thus let us get rid of those spots
@@ -295,10 +320,16 @@ if __name__ == '__main__':
                       help='output_directory (default is data)')
   parser.add_argument('-v','--version',action='version',
                       version='%s %s'%(parser.prog,splotch.__version__))
+  parser.add_argument('-V','--Visium',action='store_true',required=False,
+                      help='output in Visium format (default is standard ST)')
 
   parser.set_defaults(car=True)
   parser.set_defaults(zip=True)
   options = parser.parse_args()
+
+  print(options.count_files)
+  print(options.metadata_file)
+  print(options.Visium)
 
   # check that the supplied read count files exist
   for filename in options.count_files:
@@ -315,5 +346,6 @@ if __name__ == '__main__':
                           options.maximum_number_of_spots_per_tissue_section,
                           options.scaling_factor,options.n_levels,
                           options.minimum_sequencing_depth,options.output_directory,
-                          options.car,options.zip)
+                          options.car,options.zip,
+                          options.Visium)
   sys.exit(0)

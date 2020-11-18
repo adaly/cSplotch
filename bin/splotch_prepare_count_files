@@ -58,7 +58,6 @@ def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate)
   prepare_count_files(count_files, frames, suffix, minimum_detection_rate)
   
 def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_detection_rate=0.02):
-  print(count_files)
   # Construct the multi index
   for filename,frame in zip(count_files,frames):
   	frame.columns = pd.MultiIndex.from_product([[filename],frame.columns],names=['Sample','Coordinate'])
