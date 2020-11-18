@@ -1,7 +1,8 @@
 
-# Splotch
+# cSplotch
 
 Splotch is a hierarchical generative probabilistic model for analyzing Spatial Transcriptomics (ST) [[1]](#references) data.
+
 
 Features
 -------------
@@ -11,10 +12,9 @@ Features
 - Different anatomical annotated regions are modelled using a linear model
 - Zero-inflated Poisson or Poisson likelihood for counts
 - Conditional autoregressive (CAR) prior for spatial random effect
+- COMING SOON: ability to deconvolve gene expression among set cell types with additional input of compositional data gathered from histology images
 
-We currently support the original ST array design (1007 spots, a diameter of 100 μm, and a center-to-center distance of 200 μm) by [Spatial Transcriptomics AB](https://spatialtranscriptomics.com).
-
-We will update our code as soon as [Visium Spatial Gene Expression Solution](https://www.10xgenomics.com/spatial-transcriptomics/) by [10x Genomics, Inc.](https://www.10xgenomics.com) becomes available.
+We support the original ST array design (1007 spots, a diameter of 100 μm, and a center-to-center distance of 200 μm) by [Spatial Transcriptomics AB](https://spatialtranscriptomics.com), as well as [Visium Spatial Gene Expression Solution](https://www.10xgenomics.com/spatial-transcriptomics/) by [10x Genomics, Inc.](https://www.10xgenomics.com), interfacing directly with file formats output by [Spaceranger and Loupe Browser](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/output/overview).
 
 The Splotch code in this repository supports single-, two-, and three-level experimental designs. These three different hierarchical models are illustrated below: 
 
@@ -32,8 +32,8 @@ Splotch has been tested on Mac and Linux. It has not been tested on Windows.
 
 The following command installs the Splotch Python module and compiles the Stan model in one go
 ```console
-$ pip install git+https://git@github.com/tare/Splotch.git
-$ pip install --no-deps --force-reinstall --upgrade --install-option="--stan" git+https://git@github.com/tare/Splotch.git
+$ pip install git+https://git@github.com/adaly/cSplotch.git
+$ pip install --no-deps --force-reinstall --upgrade --install-option="--stan" git+https://git@github.com/adaly/cSplotch.git
 ```
 
 First, the installation script downloads the latest version of [CmdStan](https://mc-stan.org/users/interfaces/cmdstan) and compiles it. Second, the installation script uses the CmdStan installation to compile the Stan model.
@@ -46,6 +46,7 @@ splotch: error: argument -g is required
 $ splotch_prepare_count_files
 usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
+                                   [-V/--Visium]
                                    [-v]
 splotch_prepare_count_files: error: the following arguments are required: -c/--count_files
 $ splotch_generate_input_files
@@ -54,14 +55,16 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-l N_LEVELS]
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
-                                    [-n] [-z] [-o OUTPUT_DIRECTORY] [-v]
+                                    [-n] [-z] [-o OUTPUT_DIRECTORY] 
+                                    [-V/--Visium]
+                                    [-v]
 splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
 $ splotch_stan_model
 Usage: splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
 ⋮
 Failed to parse arguments, terminating Stan
 ```
-
+For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in the original ST format unless the ``-V/--Visium`` flag is passed. We will discuss the differences in input format in the subsequent sections.
 
 ### Second installation method
 
@@ -70,7 +73,7 @@ The second installation method installs Splotch and compiles the Stan model in s
 #### Installing Splotch without compiling the Stan models
 The Splotch Python module can be installed without compiling the Stan models as follows
 ```console
-$ pip install git+https://git@github.com/tare/Splotch.git
+$ pip install git+https://git@github.com/adaly/cSplotch.git
 ```
 
 As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, and ``splotch_generate_input_files``
@@ -81,6 +84,7 @@ splotch: error: argument -g is required
 $ splotch_prepare_count_files
 usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
+                                   [-V/--Visium]
                                    [-v]
 splotch_prepare_count_files: error: the following arguments are required: -c/--count_files
 $ splotch_generate_input_files
@@ -89,9 +93,12 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-l N_LEVELS]
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
-                                    [-n] [-z] [-o OUTPUT_DIRECTORY] [-v]
+                                    [-n] [-z] [-o OUTPUT_DIRECTORY] 
+                                    [-V/--Visium]
+                                    [-v]
 splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
 ```
+For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in the original ST format unless the ``-V/--Visium`` flag is passed. We will discuss the differences in input format in the subsequent sections.
 
 #### Installing CmdStan
 [CmdStan](https://mc-stan.org/users/interfaces/cmdstan) [[2]](#references) can be installed as follows
@@ -112,16 +119,16 @@ The Splotch Stan model ``splotch_stan_model.stan`` can be compiled using [CmdSta
 ```console
 $ cd $HOME
 $ cd cmdstan-"$STAN_VERSION"
-$ make $HOME/Splotch/stan/splotch_stan_model
+$ make $HOME/cSplotch/stan/splotch_stan_model
 
 --- Translating Stan model to C++ code ---
 ⋮
 ```
-Here we assume you have [installed CmdStan](installing-cmdstan) in the directory ``$HOME/cmdstan-$STAN_VERSION`` and have the Splotch code in the directory ``$HOME/Splotch``. Please change the paths if your environment differs.
+Here we assume you have [installed CmdStan](installing-cmdstan) in the directory ``$HOME/cmdstan-$STAN_VERSION`` and have the Splotch code in the directory ``$HOME/cSplotch``. Please change the paths if your environment differs.
 
-After a successful compilation, you will have the binary ``splotch_stan_model`` in the directory ``$HOME/Splotch/stan``
+After a successful compilation, you will have the binary ``splotch_stan_model`` in the directory ``$HOME/cSplotch/stan``
 ```console
-$ $HOME/Splotch/stan/splotch_stan_model
+$ $HOME/cSplotch/stan/splotch_stan_model
 Usage: splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
 ⋮
 Failed to parse arguments, terminating Stan
@@ -148,7 +155,12 @@ Below we will describe these steps in detail.
 In the directory ``examples``, we have some example ST data [[3]](#references). We will use this example data set in this documentation to demonstrate the use of Splotch.
 
 ### Preparation of count files
-The count files have the following tab-separated values (TSV) file format
+
+The inputs to the count file preparation script differ depending on whether the user is supplying data from original ST or Visium ST. Both cases are outlined below.
+
+#### Original ST
+
+The count files in the original ST workflow have the following tab-separated values (TSV) file format
 
 |               | 32.06_2.04 | 31.16_2.04 | 14.07_2.1 |  …         | 28.16_33.01 |
 |---------------|------------|------------|-----------|-----------|-----------|
@@ -166,20 +178,47 @@ We have to make sure that the count files have the same indexing. This can be ac
 ```console
 $ splotch_prepare_count_files --help
 
-usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
+usage: splotch_prepare_count_files [-h] -c COUNT_DATA [COUNT_FILES ...]
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
 
 A script for preparing count files for Splotch
 
 optional arguments:
 -h, --help              show this help message and exit
--c COUNT_FILES [COUNT_FILES ...], --count_files COUNT_FILES [COUNT_FILES ...]
+-c COUNT_DATA [COUNT_FILES ...], --count_data [COUNT_FILES ...]
                         list of read count filenames
 -s SUFFIX, --suffix SUFFIX
                         suffix to be added to the output filenames (default is .unified.tsv)
 -d MINIMUM_DETECTION_RATE, --minimum_detection_rate MINIMUM_DETECTION_RATE
                         minimum detection rate (default is 0.02)
 ```
+
+#### Visium ST
+
+When working with data from the Visium platform, count data are expected in the form of the output of [spaceranger count](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/using/count), which produces a structured directory containing count and metadata information for each sample.
+
+As with the original ST data, we must ensure that count files have the same indexing. This can still be achieved through the use of the ``splotch_prepare_count_files`` with the ``-V/--Visium`` flag set, which tells the script to expect paths to spaceranger output directories as input instead of stand-alone count files. The output of the script will be an additional Splotch-formatted count file created within the top level of each spaceranger output directory.
+
+```console
+$ splotch_prepare_count_files --help
+
+usage: splotch_prepare_count_files [-h] -c COUNT_DATA [SPACERANGER_COUNT_DIRS ...]
+                                   [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
+                                   [-V]
+
+A script for preparing count files for Splotch
+
+optional arguments:
+-h, --help              show this help message and exit
+-c COUNT_DATA [SPACERANGER_COUNT_DIRS ...], --count_data [SPACERANGER_COUNT_DIRS ...]
+                        list of spaceranger count directories
+-s SUFFIX, --suffix SUFFIX
+                        suffix to be added to the sample name in creation of Splotch count file within each spaceranger directory (default is .unified.tsv)
+-d MINIMUM_DETECTION_RATE, --minimum_detection_rate MINIMUM_DETECTION_RATE
+                        minimum detection rate (default is 0.02)
+-V, --Visium            data are from the Visium platform
+```
+For a sample with spaceranger output ``spaceranger_output/CN51_C2/``, this script would create a file ``spaceranger_output/CN51_C2/CN51_C2.unified.tsv`` which would then serve as input to ``splotch_generate_input_files`` (discussed below).
 
 #### Example
 
@@ -195,7 +234,9 @@ INFO:root:The median sequencing depth across the ST spots is 2389
 ### Annotation of ST spots
 To get the most out of the statistical model of Splotch one has to annotate the ST spots based on their tissue context. These annotations will allow the model to share information across tissue sections, resulting in more robust conclusions.
 
-To make the annotation step slightly less tedious, we have implemented a light-weight js tool called [Span](https://github.com/tare/Span).
+#### Original ST
+
+To make the annotation step slightly less tedious in the original ST workflow, we have implemented a light-weight js tool called [Span](https://github.com/tare/Span).
 
 The annotation files have the following TSV file format
 
@@ -214,6 +255,24 @@ The annotation files have the following TSV file format
 | Lat_Edge       | 0          | 0          | 0         | … | 0           | 
 
 The rows and columns correspond to the user-define anatomical annotation regions (AAR) and ST spot coordinates, respectively. For instance, the spot 32.06_2.04 has the Vent_Horn annotation (i.e. located in ventral horn). The annotation category of each ST spot is **one-hot encoded** and we do not currently support more than one annotation category per ST spot.
+
+#### Visium ST
+
+10x Genomics have provided a tool for the exploration and annotation of Visium data called [Loupe](https://support.10xgenomics.com/spatial-gene-expression/software/visualization/latest/what-is-loupe-browser). 
+
+When working with Visium data, we expect annnotation files in the CSV format exported by the Loupe browser
+
+| Barcode            | Label          |
+|--------------------|----------------|
+| AAACACCAATAACTGC-1 | Vent_Med_White |
+| AAACATGGTGAGAGGA-1 | Vent_Horn      |
+| AAACATTTCCCGGATT-1 | Lat_Edge       |
+| AAACCTAAGCAGCCGG-1 | Vent_Horn      |
+| AAACGAAGATGGAGTA-1 | Vent_Horn      |
+| AAACGAGACGGTTGAT-1 | Med_Lat_White  |
+| AAACGGGCGTACGGGT-1 | Vent_Horn      |
+
+The Barcode column specifies the spatial barcode associated with each spot in the Visium array (which can be associated with Visium array coordinates or pixel coordinates within the corresponding histology image using metadata in the spaceranger output directory) while the second column can be named according to any category type (Tissue, AAR, etc.) and contains a unique label for each spot.
 
 ST spots without annotation categories are discarded by ``splotch_generate_input_files`` (please see [Preparation of the input data files for Splotch](#preparation-of-the-input-data-files-for-splotch)). This behaviour can be useful when you want to discard some ST spots from the analysis based on the tissue histology.
 
@@ -239,6 +298,8 @@ The metadata table has the following TSV file format
 
 Each sample (i.e. count file) has its own row in the metadata table. The columns ``Level 1``, ``Count file``, and  ``Annotation file`` are mandatory.  The column ``Level 2`` is mandatory when using the two-level model. Whereas, the columns ``Level 2`` and ``Level 3`` are mandatory when using the three-level model. The columns ``Level 1``, ``Level 2``, and ``Level 3`` define how the samples are analyzed using the linear multilevel model.
 
+Visium data **requires an additional column**, "Spaceranger output", that points to the spaceranger output directory associated with each sample.
+
 The user can include additional columns at their own discretion. For instance, we will use the column ``Image file`` in [Tutorial.ipynb](Tutorial.ipynb).
 
 The metadata table containing information about the provided example data set can be found at ``examples/metadata.tsv``.
@@ -254,14 +315,15 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-l N_LEVELS]
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
-                                    [-n] [-z] [-o OUTPUT_DIRECTORY] [-v]
+                                    [-n] [-z] [-o OUTPUT_DIRECTORY] 
+                                    [-V] [-v]
 
 A script for generating input data for Splotch
   
 optional arguments:
 -h, --help            show this help message and exit
 -c COUNT_FILES [COUNT_FILES ...], --count_files COUNT_FILES [COUNT_FILES ...]
-                      list of read count filenames
+                      list of read count filenames (output from splotch_prepare_count_files)
 -m METADATA_FILE, --metadata_file METADATA_FILE
                       metadata filename
 -s SCALING_FACTOR, --scaling_factor SCALING_FACTOR
@@ -279,6 +341,7 @@ optional arguments:
                       inflated Poisson likelihood
 -o OUTPUT_DIRECTORY, --output_directory OUTPUT_DIRECTORY
                       output_directory (default is data)
+-V, --Visium          data are from the Visium platform (default is false)
 -v, --version         show program's version number and exit
 ```
 
