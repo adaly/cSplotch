@@ -49,6 +49,10 @@ def generate_splotch_inputs(count_files,metadata_file,
   logging.info('Reading metadata')
   metadata = pd.read_csv(metadata_file,header=0,sep='\t')
 
+  if Visium and not 'Spaceranger output' in metadata.columns:
+    logging.critical('A "Spaceranger output" column is required in metadata for Visium samples!')
+    sys.exit(1)
+
   # discard count files that are not present in the metadata table
   found_indices = []
   for count_file_idx,count_file in enumerate(count_files):

@@ -84,8 +84,8 @@ if __name__ == '__main__':
 
   parser = argparse.ArgumentParser(
     description='A script for preparing count files for Splotch')
-  parser.add_argument('-c','--count_files',action='store',
-                      dest='count_files',type=str,nargs='+',
+  parser.add_argument('-c','--count_data',action='store',
+                      dest='count_data',type=str,nargs='+',
                       required=True,help='list of read count filenames')
   parser.add_argument('-s','--suffix',action='store',
                       dest='suffix',type=str,required=False,
@@ -102,13 +102,13 @@ if __name__ == '__main__':
   options = parser.parse_args()
 
   # check that the supplied read count files exist
-  for filename in options.count_files:
+  for filename in options.count_data:
     if not options.Visium and not os.path.isfile(filename):
       logging.critical('Count file %s does not exist!'%(filename))
       sys.exit(1)
 
     if options.Visium and not os.path.isdir(filename):
-      logging.critical('Spaceranger directory %s does not exist!'%(filename))
+      logging.critical('Spaceranger count directory %s does not exist!'%(filename))
       sys.exit(1)
 
   # check that the minimum detection rate is valid
@@ -117,8 +117,8 @@ if __name__ == '__main__':
     sys.exit(1)
 
   if not options.Visium:
-    st_prepare_count_files(options.count_files, options.suffix, options.minimum_detection_rate)
+    st_prepare_count_files(options.count_data, options.suffix, options.minimum_detection_rate)
   else:
-    visium_prepare_count_files(options.count_files, options.suffix, options.minimum_detection_rate)
+    visium_prepare_count_files(options.count_data, options.suffix, options.minimum_detection_rate)
 
   sys.exit(0)
