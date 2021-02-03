@@ -225,6 +225,13 @@ def read_aar_matrix(filename):
 
   return aar_matrix,aar_names
 
+def read_cellcomp_matrix(filename):
+  cellcomp_matrix = pd.read_csv(filename,header=0,index_col=0,sep='\t')
+
+  celltype_names = list(cellcomp_matrix.index)
+
+  return cellcomp_matrix, celltype_names
+
 def read_array(filename):
   # read the count file
   count_file = pd.read_csv(filename,header=0,index_col=0,sep='\t') 
@@ -342,7 +349,8 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
                         N_levels,coordinates_list,
                         size_factors_list,aar_matrix_list, 
                         level_mappings,tissue_mapping_list,
-                        W_list,W_n_list,car,zip):
+                        W_list,W_n_list,car,zip,
+                        compositional,cellcomp_matrix_list):
 
   data = {'N_spots': N_spots_list,
           'N_tissues': N_tissues,
@@ -375,6 +383,13 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
       for tissue_section_aar_matrix in aar_matrix_list[tissue_idx].T]
   data['D'] = concatenated_D
 
+  if compositional:
+    concat_E = []
+    for tissue_idx in range(0,N_tissues):
+      concat_E.append(cellcomp_matrix_list[tissue_idx].T)
+    data['E'] = np.vstack(concat_E)
+    data['N_celltypes'] = data['E'].shape[1]
+
   if car:
     data['W_n']  = [sum(W_n_list)]
     W = block_diag(W_list,format='csr')
@@ -402,7 +417,8 @@ def get_tissue_section_spots(tissue_idx,array_coordinates_float,spots_tissue_sec
 
 def filter_arrays(indices,coordinates_str=None,coordinates_float=None,
                   counts=None,counts_per_spot=None,size_factors=None,
-                  aar_matrix=None,W=None):
+                  aar_matrix=None,W=None,
+                  cellcomp_matrix=None):
   output = []
 
   if coordinates_str is not None:
@@ -419,6 +435,8 @@ def filter_arrays(indices,coordinates_str=None,coordinates_float=None,
     output.append(aar_matrix[:,indices])
   if W is not None:
     output.append(W[indices,:][:,indices])
+  if cellcomp_matrix is not None:
+    output.append(cellcomp_matrix[:,indices])
 
   return output
 

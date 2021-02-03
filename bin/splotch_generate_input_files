@@ -20,7 +20,8 @@ from splotch.utils import get_variable_mappings, watershed_tissue_sections, \
   print_summary, read_aar_matrix, read_array, read_array_metadata, \
   detect_tissue_sections, get_spot_adjacency_matrix, get_counts, \
   generate_W_sparse, generate_column_labels, generate_dictionary, \
-  get_tissue_section_spots, filter_arrays, n_elements_per_level, to_rdump
+  get_tissue_section_spots, filter_arrays, n_elements_per_level, to_rdump, \
+  read_cellcomp_matrix
 from splotch.utils_visium import unique_annots_loupe, read_annot_matrix_loupe, \
   detect_tissue_sections_hex, get_tissue_section_spots_hex, \
   get_spot_adjacency_matrix_hex
@@ -30,7 +31,7 @@ def generate_splotch_inputs(count_files,metadata_file,
                             median_sequencing_depth,
                             n_levels,minimum_sequencing_depth,
                             output_directory,car,zip,
-                            Visium=False):
+                            Visium=False,compositional=False):
 
   # initialize a bunch of variables for keeping tissue section specific data
   aar_matrix_list = []
@@ -44,6 +45,7 @@ def generate_splotch_inputs(count_files,metadata_file,
   W_list = []
   W_n_list = []
   files_list = []
+  cellcomp_matrix_list = []
 
   # read metadata file
   logging.info('Reading metadata')
@@ -103,9 +105,19 @@ def generate_splotch_inputs(count_files,metadata_file,
   else:
     aar_names = unique_annots_loupe(metadata[:]['Annotation file'].values)
 
+  # if provided, get the names of cell types from compositional label data
+  if compositional:
+    if not 'Composition file' in metadata.columns:
+      logging.critical('A "Composition file" column is required in metadata for compositional Splotch!')
+      sys.exit(1)
+
+    cellcomp_filename = metadata[metadata['Count file'] == count_files[0]]['Composition file'].values[0]
+    _,celltype_names = read_cellcomp_matrix(cellcomp_filename)
+    N_celltypes = len(celltype_names)
+
   # get the number of genes
   N_genes = len(genes)
-  # get the number of distint aars
+  # get the number of distinct aars
   N_covariates = len(aar_names)
   
   # loop over the read count files
@@ -143,6 +155,15 @@ def generate_splotch_inputs(count_files,metadata_file,
         spaceranger_dir = metadata[metadata['Count file'] == filename]['Spaceranger output'].values[0]
         position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions_list.csv")
         array_aar_matrix = read_annot_matrix_loupe(annotation_filename, position_file, aar_names)
+
+      # read spot compositions
+      if compositional:
+        cellcomp_filename = metadata[metadata['Count file'] == filename]['Composition file'].values[0]
+        array_cellcomp_matrix, array_celltype_names = read_cellcomp_matrix(cellcomp_filename)
+
+        if not numpy.array_equal(array_celltype_names, celltype_names):
+          logging.critical('Mismatch with cell types! Order of cell types must match!')
+          sys.exit(1)
   
       # find spots with enough UMIs
       good_spots = array_counts_per_spot >= minimum_sequencing_depth
@@ -154,6 +175,12 @@ def generate_splotch_inputs(count_files,metadata_file,
         if (coord not in array_aar_matrix.columns) or \
            (array_aar_matrix[coord].sum() == 0):
           good_spots[n] = False
+
+        # discard a spot if it is not present in composition file 
+        # or does not have composition
+        if compositional:
+          if (coord not in array_cellcomp_matrix.columns) or (array_cellcomp_matrix[coord].sum()==0):
+            good_spots[n] = False 
 
       # let us skip the current array if we have less than 10 spots left
       # useful for troubleshooting
@@ -201,6 +228,10 @@ def generate_splotch_inputs(count_files,metadata_file,
   
         # get aar matrix for the spots on the current tissue section
         tissue_section_aar_matrix = array_aar_matrix[tissue_section_coordinates_str].values
+        
+        # get cell type compositions for the spots on the current tissue section
+        if compositional:
+          tissue_section_cellcomp_matrix = array_cellcomp_matrix[tissue_section_coordinates_str].values
   
         if car:
           # get the spot adjacency matrix of the spots
@@ -213,12 +244,23 @@ def generate_splotch_inputs(count_files,metadata_file,
           # CAR prior will break if there are spots without neighbors,
           # thus let us get rid of those spots
           connected_spots = tissue_section_W.sum(0) > 0
-          tissue_section_coordinates_str,tissue_section_coordinates_float,tissue_section_counts,\
-            tissue_section_size_factors,tissue_section_aar_matrix,tissue_section_W = \
-            filter_arrays(connected_spots,coordinates_str=tissue_section_coordinates_str,
-                          coordinates_float=tissue_section_coordinates_float,counts=tissue_section_counts,
-                          size_factors=tissue_section_size_factors,aar_matrix=tissue_section_aar_matrix,
-                          W=tissue_section_W)
+
+          if compositional:
+            tissue_section_coordinates_str,tissue_section_coordinates_float,tissue_section_counts,\
+              tissue_section_size_factors,tissue_section_aar_matrix,tissue_section_W,\
+              tissue_section_cellcomp_matrix = \
+              filter_arrays(connected_spots,coordinates_str=tissue_section_coordinates_str,
+                            coordinates_float=tissue_section_coordinates_float,counts=tissue_section_counts,
+                            size_factors=tissue_section_size_factors,aar_matrix=tissue_section_aar_matrix,
+                            W=tissue_section_W,
+                            cellcomp_matrix=tissue_section_cellcomp_matrix)
+          else:
+            tissue_section_coordinates_str,tissue_section_coordinates_float,tissue_section_counts,\
+              tissue_section_size_factors,tissue_section_aar_matrix,tissue_section_W = \
+              filter_arrays(connected_spots,coordinates_str=tissue_section_coordinates_str,
+                            coordinates_float=tissue_section_coordinates_float,counts=tissue_section_counts,
+                            size_factors=tissue_section_size_factors,aar_matrix=tissue_section_aar_matrix,
+                            W=tissue_section_W)
   
         # gather the data of the current tissue section
         # read counts for the spots on the current tissue section
@@ -242,6 +284,9 @@ def generate_splotch_inputs(count_files,metadata_file,
           W_n_list.append(int(tissue_section_W.sum()/2))
         # link the current tissue section to the mouse
         tissue_mapping_list.append(tissue_mapping)
+        # cell type compositions of the spots in the current tissue section
+        if compositional:
+          cellcomp_matrix_list.append(tissue_section_cellcomp_matrix)
 
   # print summary of the collected data
   print_summary(levels_list,coordinates_list)
@@ -257,7 +302,8 @@ def generate_splotch_inputs(count_files,metadata_file,
                              coordinates_list,size_factors_list,
                              aar_matrix_list,level_mappings,
                              tissue_mapping_list,
-                             W_list,W_n_list,car,zip)
+                             W_list,W_n_list,car,zip,
+                             compositional,cellcomp_matrix_list)
 
   # write input data files for each gene separately
   logging.info('Saving the input data files (%s)'%(os.path.normpath('%s/'%(output_directory))))
@@ -280,7 +326,12 @@ def generate_splotch_inputs(count_files,metadata_file,
   # write the variables containing genes, columns, aar names to disk
   logging.info('Saving additional information (%s)'%(os.path.normpath('%s/information.p'%(output_directory))))
   filenames_coordinates = generate_column_labels(files_list,coordinates_list)
-  pickle.dump({'genes':genes,'filenames_and_coordinates':filenames_coordinates,'annotation_mapping':aar_names,'beta_mapping':conditions_to_variables,'n_levels':n_levels,'metadata':metadata,'scaling_factor':median_sequencing_depth,'car':car,'zip':car},open(os.path.normpath('%s/information.p'%(output_directory)),'wb'))
+
+  info_dict = {'genes':genes,'filenames_and_coordinates':filenames_coordinates,'annotation_mapping':aar_names,'beta_mapping':conditions_to_variables,
+               'n_levels':n_levels,'metadata':metadata,'scaling_factor':median_sequencing_depth,'car':car,'zip':car}
+  if compositional:
+    info_dict['celltype_mapping'] = celltype_names
+  pickle.dump(info_dict,open(os.path.normpath('%s/information.p'%(output_directory)),'wb'))
 
   logging.info('Finished')
   
@@ -326,6 +377,8 @@ if __name__ == '__main__':
                       version='%s %s'%(parser.prog,splotch.__version__))
   parser.add_argument('-V','--Visium',action='store_true',required=False,
                       help='output in Visium format (default is standard ST)')
+  parser.add_argument('-p','--compositional',action='store_true',dest='compositional',required=False,
+                      help='Employ per-spot compositional labels to deconvolve contributions of individual cell types.')
 
   parser.set_defaults(car=True)
   parser.set_defaults(zip=True)
@@ -351,5 +404,6 @@ if __name__ == '__main__':
                           options.scaling_factor,options.n_levels,
                           options.minimum_sequencing_depth,options.output_directory,
                           options.car,options.zip,
-                          options.Visium)
+                          options.Visium,
+                          options.compositional)
   sys.exit(0)
