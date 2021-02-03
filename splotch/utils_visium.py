@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 from scipy.ndimage import label
 
-from utils import watershed_tissue_sections, get_spot_adjacency_matrix
+from .utils import watershed_tissue_sections, get_spot_adjacency_matrix
 
 # Read in a series of Loupe annotation files and return the set of all unique categories.
 # NOTE: "Undefined" 
