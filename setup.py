@@ -103,14 +103,14 @@ with open(os.path.join(os.path.abspath(os.path.dirname(__file__)),'requirements.
 # get the names of thestan executables
 stan_files = [re.sub('.stan$','',stan_file) for stan_file in glob.glob(os.path.join(os.getcwd(),'stan','*.stan'))]
 
-setup(name='Splotch',
+setup(name='cSplotch',
       version=splotch.__version__,
       description='Hierarchical model for Spatial Transcriptomics data',
       long_description=long_description,
       long_description_content_type='text/markdown',
       author=splotch.__author__,
       author_email=splotch.__email__,
-      url='https://github.com/tare/Splotch',
+      url='https://github.com/adaly/cSplotch',
       license=splotch.__license__,
       classifiers=[
           'Development Status :: 4 - Beta',
