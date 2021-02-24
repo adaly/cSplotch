@@ -179,11 +179,15 @@ def generate_splotch_inputs(count_files,metadata_file,
            (array_aar_matrix[coord].sum() == 0):
           good_spots[n] = False
 
-        # discard a spot if it is not present in composition file 
         # or has an invalid compositional entry
         if compositional:
-          if (coord not in array_cellcomp_matrix.columns) or not numpy.isclose(array_cellcomp_matrix[coord].sum(), 1):
+          # discard a spot if it is not present in composition file 
+          if (coord not in array_cellcomp_matrix.columns):
             good_spots[n] = False 
+          # ...or has invalid composition specification (expects non-negative entries summing to 1)
+          elif not numpy.isclose(array_cellcomp_matrix[coord].sum(), 1) or any(array_cellcomp_matrix[coord] < 0):
+            logging.warning('Spot %s in %s has invalid simplex composition (will be omitted)' % (coord, cellcomp_filename))
+            good_spots[n] = False
 
       # let us skip the current array if we have less than 10 spots left
       # useful for troubleshooting
