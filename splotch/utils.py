@@ -225,12 +225,34 @@ def read_aar_matrix(filename):
 
   return aar_matrix,aar_names
 
-def read_cellcomp_matrix(filename):
+'''def read_cellcomp_matrix(filename):
   cellcomp_matrix = pd.read_csv(filename,header=0,index_col=0,sep='\t')
 
   celltype_names = list(cellcomp_matrix.index)
 
-  return cellcomp_matrix, celltype_names
+  return cellcomp_matrix, celltype_names'''
+
+def read_cellcomp_matrix(cellcomp_file, array_coordinates_str=None):
+  '''
+  Read a Splotch-formatted cell composition file
+  --------
+  Returns
+  --------
+  (celltypes, spots) matrix of celltype compositions.
+    if array_coordinates_str provided, includes only specified spots in specified order.
+  (celltyes,) list of celltype names
+  (len(array_coordinates_str),) boolean array indicating which of the specified coordinates were present.
+  '''
+  comp_dat = pd.read_csv(cellcomp_file, sep='\t', header=0, index_col=0)
+  
+  if array_coordinates_str is None:
+      return comp_dat, list(comp_dat.index)
+  else:
+      in_cellcomp = np.array([s in comp_dat.columns for s in array_coordinates_str], dtype=bool)
+      
+      comp_dat_filtered = comp_dat[array_coordinates_str[in_cellcomp]]
+      
+      return comp_dat_filtered, list(comp_dat_filtered.index), in_cellcomp
 
 def read_array(filename):
   # read the count file

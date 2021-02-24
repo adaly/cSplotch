@@ -128,6 +128,7 @@ def generate_splotch_inputs(count_files,metadata_file,
       # read the count file
       array_genes,array_coordinates_str,array_coordinates_float,array_counts,array_counts_per_spot = \
         read_array(filename)
+      good_spots = numpy.ones(len(array_counts_per_spot), dtype=bool)
 
       if not numpy.array_equal(array_genes,genes):
           logging.critical('Mismatch with genes! Order of the genes must match!')
@@ -159,11 +160,13 @@ def generate_splotch_inputs(count_files,metadata_file,
       # read spot compositions
       if compositional:
         cellcomp_filename = metadata[metadata['Count file'] == filename]['Composition file'].values[0]
-        array_cellcomp_matrix, array_celltype_names = read_cellcomp_matrix(cellcomp_filename)
+        array_cellcomp_matrix, array_celltype_names, in_cellcomp = read_cellcomp_matrix(cellcomp_filename, array_coordinates_str)
 
         if not numpy.array_equal(array_celltype_names, celltype_names):
           logging.critical('Mismatch with cell types! Order of cell types must match!')
           sys.exit(1)
+
+        good_spots = good_spots & in_cellcomp
   
       # find spots with enough UMIs
       good_spots = array_counts_per_spot >= minimum_sequencing_depth
@@ -177,9 +180,9 @@ def generate_splotch_inputs(count_files,metadata_file,
           good_spots[n] = False
 
         # discard a spot if it is not present in composition file 
-        # or does not have composition
+        # or has an invalid compositional entry
         if compositional:
-          if (coord not in array_cellcomp_matrix.columns) or (array_cellcomp_matrix[coord].sum()==0):
+          if (coord not in array_cellcomp_matrix.columns) or not numpy.isclose(array_cellcomp_matrix[coord].sum(), 1):
             good_spots[n] = False 
 
       # let us skip the current array if we have less than 10 spots left
