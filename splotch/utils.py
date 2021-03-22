@@ -241,7 +241,6 @@ def read_cellcomp_matrix(cellcomp_file, array_coordinates_str=None):
   (celltypes, spots) matrix of celltype compositions.
     if array_coordinates_str provided, includes only specified spots in specified order.
   (celltyes,) list of celltype names
-  (len(array_coordinates_str),) boolean array indicating which of the specified coordinates were present.
   '''
   comp_dat = pd.read_csv(cellcomp_file, sep='\t', header=0, index_col=0)
   
@@ -252,7 +251,7 @@ def read_cellcomp_matrix(cellcomp_file, array_coordinates_str=None):
       
       comp_dat_filtered = comp_dat[array_coordinates_str[in_cellcomp]]
       
-      return comp_dat_filtered, list(comp_dat_filtered.index), in_cellcomp
+      return comp_dat_filtered, list(comp_dat_filtered.index)
 
 def read_array(filename):
   # read the count file
