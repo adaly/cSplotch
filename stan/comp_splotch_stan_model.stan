@@ -188,7 +188,6 @@ transformed parameters {
       for (i in 1:N_tissues) {
         for (j in csum_N_spots[i]+1:csum_N_spots[i+1]) {
           log_lambda[j] = beta_level_1[tissue_mapping[i],D[j]] * E[j]
-          + psi[j]
           + 0.3 * sigma * noise_raw[j];
         }
       }
