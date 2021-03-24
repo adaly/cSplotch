@@ -73,7 +73,7 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
 	covariates['N_celltypes'] = n_celltypes
 	covariates['tissue_mapping'] = n_arrays * [1]
 	covariates['size_factors'] = count_mat.sum(axis=0)
-	covariates['D'] = (n_arrays * spots_per_array) * [1]
+	covariates['D'] = np.ones(n_arrays * spots_per_array, dtype=int)
 	covariates['E'] = np.transpose(comp_mat)
 
 	pickle.dump(covariates, open(os.path.join(output_dir, "covariates.p"), "wb"))
@@ -90,7 +90,17 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
 # Simulate tissue comprised of a single AAR with some cell types observed as a 
 # composite signature
 def simdata_a1_composite(sigma=0.):
-	pass
+	df = pd.read_csv(scdat, sep=",", index_col=0)
+
+	included_types = [
+		'2 Unassigned',                   # 'BG'
+		'3 Unassigned',                   # 'BG'
+		'6 Astrocyte - Slc7a10',          # 'Glia'
+		'10 Microglia',                   # 'Glia'
+		'12 Oligodendrocyte Myelinating', # 'Glia'
+		'16 Alpha motor neurons',         # 'Neuron'
+		'17 Gamma motor neurons'          # 'Neuron'
+	]
 
 # Simulate tissue comprised of two AARs (WM and GM) with all cell types observed
 def simdata_a2(sigma=0.):
@@ -113,4 +123,5 @@ def simdata_a2_composite(sigma=0.):
 
 
 if __name__ == '__main__':
-	simdata_a1(12, spots_per_array=2000, sigma=0.1, output_dir='a1_sigma0')
+	simdata_a1(12, spots_per_array=2000, sigma=0., output_dir='simdata_a1_sigma_0.0')
+	simdata_a1(12, spots_per_array=2000, sigma=0.1, output_dir='simdata_a1_sigma_0.1')
