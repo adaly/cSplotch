@@ -56,14 +56,16 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
 	# Simulate an array with all cell types present in uniformly random combination
 	spot_kwargs = [{'celltypes_present': np.arange(n_celltypes)}]
 
-	count_mat, comp_mat, aar_vec = simarray(cmat, spot_kwargs, [1.], 
+	count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [1.], 
 		n_spots=spots_per_array*n_arrays)
 
 	# Add Gaussian noise to composition matrix and normalize
 	if sigma > 0:
-		comp_mat += np.random.normal(scale=sigma, size=comp_mat.shape)
-		comp_mat = np.maximum(comp_mat, np.zeros_like(comp_mat))
-		comp_mat /= comp_mat.sum(axis=0)
+		comp_obs = comp_true + np.random.normal(scale=sigma, size=comp_true.shape)
+		comp_obs = np.maximum(comp_obs, np.zeros_like(comp_obs))
+		comp_obs /= comp_obs.sum(axis=0)
+	else:
+		comp_obs = comp_true
 
 	# Save covariate data in dictionary formatted as input to stan model
 	# (Count data for given gene must be added in 'counts' field)
@@ -74,17 +76,13 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
 	covariates['tissue_mapping'] = n_arrays * [1]
 	covariates['size_factors'] = count_mat.sum(axis=0)
 	covariates['D'] = np.ones(n_arrays * spots_per_array, dtype=int)
-	covariates['E'] = np.transpose(comp_mat)
+	covariates['E'] = np.transpose(comp_obs)
 
 	pickle.dump(covariates, open(os.path.join(output_dir, "covariates.p"), "wb"))
 
 	# Save counts as a sparse (CSR) matrix
 	sparse_counts = sparse.csr_matrix(count_mat)
 	sparse.save_npz(os.path.join(output_dir, 'counts'), sparse_counts)
-
-	# Which genes are expressed in at least 2% of spots
-	expcount = (count_mat>0).sum(axis=1)
-	print(np.sum(expcount > .02*spots_per_array*n_arrays))
 
 
 # Simulate tissue comprised of a single AAR with some cell types observed as a 

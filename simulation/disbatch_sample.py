@@ -7,10 +7,14 @@ from scipy import sparse
 
 
 parser = argparse.ArgumentParser("Generate posteriors from simulated ST data to see if cSplotch can deconvolve cell type expression.")
-parser.add_argument('-d', '--data-dir', type=str, required=True, help="Directory containing simulated data and covariates.")
-parser.add_argument('-o', '--output-dir', type=str, required=True, help='Directory in which to save output.')
-parser.add_argument('-f', '--filename', type=str, required=True, help='Path to save disbatch file.')
-parser.add_argument('-n', '--num-samples', type=int, default=1000, help="Number of genes to fit.")
+parser.add_argument(
+	'-d', '--data-dir', type=str, required=True, help="Directory containing simulated data and covariates.")
+parser.add_argument(
+	'-o', '--output-dir', type=str, required=True, help='Directory in which to save output.')
+parser.add_argument(
+	'-f', '--filename', type=str, required=True, help='Path to save disbatch file.')
+parser.add_argument(
+	'-n', '--num-samples', type=int, default=1000, help="Number of genes to fit.")
 args = parser.parse_args()
 
 covariates = pickle.load(open(os.path.join(args.data_dir, 'covariates.p'), 'rb'))

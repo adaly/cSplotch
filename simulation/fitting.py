@@ -8,10 +8,14 @@ from scipy import sparse
 import pystan
 
 parser = argparse.ArgumentParser("Generate posteriors from simulated ST data to see if cSplotch can deconvolve cell type expression.")
-parser.add_argument('-d', '--data-dir', type=str, required=True, help="Directory containing simulated data and covariates.")
-parser.add_argument('-o', '--output-dir', type=str, required=True, help='Directory in which to save output.')
-parser.add_argument('-g', '--gene', type=int, required=True, help="Index of gene to be processed.")
-parser.add_argument('-r', '--recompile', action='store_true', help='Recompile Stan model.')
+parser.add_argument(
+	'-d', '--data-dir', type=str, required=True, help="Directory containing simulated data and covariates.")
+parser.add_argument(
+	'-o', '--output-dir', type=str, required=True, help='Directory in which to save output.')
+parser.add_argument(
+	'-g', '--gene', type=int, required=True, help="Index of gene to be processed.")
+parser.add_argument(
+	'-r', '--recompile', action='store_true', help='Recompile Stan model.')
 args = parser.parse_args()
 
 # Load precompiled model, if available.
