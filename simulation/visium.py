@@ -138,27 +138,68 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 	sparse.save_npz(os.path.join(output_dir, 'counts'), sparse_counts)
 
 
-# Simulate tissue comprised of two AARs (WM and GM) with all cell types observed
-def simdata_a2(sigma=0.):
+# Simulate tissue comprised of two AARs (WM and GM) with some cell types observed as a
+# composite signature
+def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
 	df = pd.read_csv(scdat, sep=",", index_col=0)
 
 	included_types = [
-		'5 Astrocyte - Gfap',    # White matter
-		'6 Astrocyte - Slc7a10', # Gray matter
-		'10 Microglia',
-		'11 Oligo Mature',
-		'12 Oligodendrocyte Myelinating',
-		'16 Alpha motor neurons', # Gray matter
-		'17 Gamma motor neurons', # Gray matter
+		'2 Unassigned',          # BG (WM + GM)
+		'3 Unassigned',          # BG (WM + GM)
+		'5 Astrocyte - Gfap',    # Glia (WM)
+		'6 Astrocyte - Slc7a10', # Glia (GM)
+		'8 Endothelial',         # BG (WM + GM)
+		'9 VLMC',                # BG (WM)
+		'10 Microglia',          # Glia (WM + GM)
+		'11 Oligo Mature',       # Glia (WM + GM?)
+		'12 Oligodendrocyte Myelinating', # Glia (WM)
+		'16 Alpha motor neurons', # Neuron (GM)
+		'17 Gamma motor neurons', # Neuron (GM)
+	]
+	cmat = df[included_types].values - 1
+	n_celltypes = len(included_types)
+
+	spot_kwargs = [
+		{'celltypes_present': np.array([0,1,2,4,5,6,7,8])},  # WM
+		{'celltypes_present': np.array([0,1,3,4,6,7,9,10])}  # GM
 	]
 
-# Simulate tissue comprised of two AARs (WM and GM) with some cell types observed as a
-# composite signature
-def simdata_a2_composite(sigma=0.):
-	pass
+	count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [.5, .5], 
+		n_spots=spots_per_array*n_arrays)
+
+	# Create 3 composite profiles by combining similar scRNA-seq profiles
+	comp_obs = np.zeros((3, comp_true.shape[1]))
+	comp_obs[0,:] = comp_true[0] + comp_true[1] + comp_true[4] + comp_true[5]
+	comp_obs[1,:] = comp_true[2] + comp_true[3] + comp_true[6] + comp_true[7] + comp_true[8]
+	comp_obs[2,:] = comp_true[9] + comp_true[10]
+
+	# Add Gaussian noise to composition data and normalize
+	if sigma > 0:
+		comp_obs = comp_true + np.random.normal(scale=sigma, size=comp_true.shape)
+		comp_obs = np.maximum(comp_obs, np.zeros_like(comp_obs))
+		comp_obs /= comp_obs.sum(axis=0)
+
+	# Save covariate data in dictionary formatted as input to stan model
+	# (Count data for given gene must be added in 'counts' field)
+	covariates['N_tissues'] = n_arrays
+	covariates['N_spots'] = n_arrays * [spots_per_array]
+	covariates['N_covariates'] = 2
+	covariates['N_celltypes'] = 3
+	covariates['tissue_mapping'] = n_arrays * [1]
+	covariates['size_factors'] = count_mat.sum(axis=0)
+	covariates['D'] = aar_vec + 1
+	covariates['E'] = np.transpose(comp_obs)
+
+	pickle.dump(covariates, open(os.path.join(output_dir, "covariates.p"), "wb"))
+
+	# Save counts as a sparse (CSR) matrix
+	sparse_counts = sparse.csr_matrix(count_mat)
+	sparse.save_npz(os.path.join(output_dir, 'counts'), sparse_counts)
 
 
 if __name__ == '__main__':
 	#simdata_a1(12, spots_per_array=2000, sigma=0., output_dir='simdata_a1_sigma_0.0')
 	#simdata_a1(12, spots_per_array=2000, sigma=0.1, output_dir='simdata_a1_sigma_0.1')
-	simdata_a1_composite(12, spots_per_array=200, sigma=0, output_dir='simdata_a1_sigma_0.0_composite')
+	#simdata_a1_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a1_sigma_0.0_composite')
+
+	simdata_a2_composite(12, spots_per_array=200, sigma=0, output_dir='simdata_a2_sigma_0.0_composite')
