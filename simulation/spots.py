@@ -13,8 +13,9 @@ def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None,
 		matrix containing characteristic expression of each gene in each cell type
 	spot_depth: int
 		number of total UMI counts to simulate
-	celltype_wts: (n_celltypes,) ndarray of dtype float, or None
-		if provided, proportion of each cell type present in spot.
+	celltype_wts: (n_celltypes,) ndarray of dtype float, function, or None
+		if ndarray, proportion of each cell type present in spot.
+		if function, returns sample from distribution over celltype proportions (no arguments).
 		if None, proportions will be randomly sampled from a uniform distribution.
 	celltypes_present: int, array-like of dtype int, or None
 		if celltype_wts is None, used to specify either the number of unique cell types 
@@ -36,33 +37,47 @@ def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None,
 
 	if celltype_wts is None:
 		if celltypes_present is None:
-			celltype_wts = np.random.random(n_celltypes)
+			W = np.random.random(n_celltypes)
 		
 		else:
-			celltype_wts = np.zeros(n_celltypes)
+			W = np.zeros(n_celltypes)
 			
 			# Number of component cell types specified
 			if isinstance(celltypes_present, int):
 				selected = np.random.randint(n_celltypes, size=celltypes_present)
-				celltype_wts[selected] = np.random.random(celltypes_present)
+				W[selected] = np.random.random(celltypes_present)
 
 			# Indices of component cell types specified
 			elif isinstance(celltypes_present, np.ndarray):
-				celltype_wts[celltypes_present] = np.random.random(len(celltypes_present))
+				W[celltypes_present] = np.random.random(len(celltypes_present))
 			
 			else:
 				raise ValueError('celltypes_present must be integer or array of integers')
 
-	celltype_wts /= np.sum(celltype_wts)
+	elif callable(celltype_wts):
+		W = celltype_wts()
+
+		if not hasattr(W, 'shape') or W.shape != (n_celltypes,):
+			raise ValueError('celltype_wts function must return a 1d array of length n_celltypes')
+
+		W = np.maximum(W, np.zeros_like(W))
+
+	elif hasattr(celltype_wts, 'shape') and celltype_wts.shape == (n_celltypes,):
+		W = celltype_wts
+	else:
+		raise ValueError('celltype_wts must be an array of length n_celltypes')
+
+	# Ensure weights sum to 1 (valid simplex)
+	W /= np.sum(W)
 
 	# Sample wt*total_count counts from each celltype according to a multinomial distr.
 	count_vec = np.zeros(n_genes, dtype=int)
-	for i, w in enumerate(celltype_wts):
+	for i, w in enumerate(W):
 		counts = int(np.rint(w * spot_depth))
 		if w>0:
 			count_vec += np.random.multinomial(counts, expmat[:,i])
 
-	return count_vec, celltype_wts
+	return count_vec, W
 
 # Simulate a tissue composed of spots belonging to multiple AARs in a known proportion
 def simarray(celltype_profiles, aar_kwargs, aar_freq, n_spots=2000):
@@ -120,11 +135,19 @@ if __name__ == '__main__':
 	# Note: Cat's mouse Visium data has 24 arrays, ~2k spots/array, 13990 genes
 	scdat = "../data/aam8999_TableS10.csv"
 	df = pd.read_csv(scdat, sep=",", index_col=0)
-	cmat = df.values-1
+	cmat = (df.values-1)[:,:7]
 
-	counts, wts = simspot(cmat, celltypes_present=6, spot_depth=10000)
+	def ctw1():
+		w = np.random.normal(loc=[.5,.4,.1,0,0,0,0], scale=[.2,.2,.1,0,0,0,0])
+		return np.maximum(w, np.zeros_like(w))
 
-	spot_args = [
+	#counts, wts = simspot(cmat, celltypes_present=np.array([0,1]), spot_depth=10000)
+	counts, wts = simspot(cmat, celltype_wts=None, spot_depth=10000)
+
+	print(counts.sum())
+	print(wts)
+
+	'''spot_args = [
 		{'celltypes_present': np.array([1,2,4])},
 		{'celltypes_present': np.array([1,2,5,6])}
 	]
@@ -134,4 +157,4 @@ if __name__ == '__main__':
 
 	print(count_mat, count_mat.sum(axis=0), count_mat.max(axis=0))
 	print(comp_mat, comp_mat.sum(axis=0))
-	print(aar_vec)
+	print(aar_vec)'''
