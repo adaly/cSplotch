@@ -220,7 +220,7 @@ model {
   if (N_level_3)
     sigma_level_3[1] ~ normal(0,1);
 
-  for (i in 1:N_level_1) {
+  for (i in 1:N_level_1+N_level_2+N_level_3) {
     for (j in 1:N_covariates) {
       beta_raw[i,j] ~ normal(0,1);
     }
