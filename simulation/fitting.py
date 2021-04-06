@@ -16,17 +16,24 @@ parser.add_argument(
 	'-g', '--gene', type=int, required=True, help="Index of gene to be processed.")
 parser.add_argument(
 	'-r', '--recompile', action='store_true', help='Recompile Stan model.')
+parser.add_argument(
+	'-s', '--standard', action='store_true', help='Use standard Splotch model instead of cSplotch')
 args = parser.parse_args()
 
+
+if not args.standard:
+	model_file = '../stan/comp_splotch_stan_model'
+else:
+	model_file = '../stan/splotch_stan_model'
+
 # Load precompiled model, if available.
-model_dir = "../stan/"
-if os.path.exists(os.path.join(model_dir,"comp_splotch_stan_model.pkl")) and not args.recompile:
+if os.path.exists(model_file + '.pkl') and not args.recompile:
 	print("Loading precomiled model.")
-	stan_model = pickle.load(open(os.path.join(model_dir,"comp_splotch_stan_model.pkl"), "rb"))
+	stan_model = pickle.load(open(model_file + '.pkl', "rb"))
 else:
 	print("Compiling model from source.")
-	stan_model = pystan.StanModel(file=os.path.join(model_dir,"comp_splotch_stan_model.stan"))
-	pickle.dump(stan_model, open(os.path.join(model_dir,"comp_splotch_stan_model.pkl"), "wb"))
+	stan_model = pystan.StanModel(file=model_file + '.stan')
+	pickle.dump(stan_model, open(model_file + '.pkl', "wb"))
 
 splotch_in = pickle.load(open(os.path.join(args.data_dir, 'covariates.p'), 'rb'))
 
