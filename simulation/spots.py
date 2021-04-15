@@ -375,5 +375,6 @@ if __name__ == '__main__':
 		aar_kwargs=aar_kwargs, n_spots=10, comp_mode='counts')
 
 	print(count_mat.sum(axis=0))
+
 	
 

@@ -229,3 +229,4 @@ if __name__ == '__main__':
 	#simdata_a1(12, spots_per_array=2000, sigma=0.1, output_dir='simdata_a1_sigma_0.1')
 	#simdata_a1_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a1_sigma_0.0_composite')
 	#simdata_a2_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a2_sigma_0.0_composite')
+	#simdata_a2_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a2_sigma_0.0_composite')
