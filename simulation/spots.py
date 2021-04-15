@@ -139,7 +139,7 @@ def simarray(celltype_profiles, aar_kwargs, aar_freq, n_spots=2000):
 ##               Simulation from cell-level data (sn/scRNA-seq matrix)                 ##
 #########################################################################################
 
-def simdata_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=10, 
+def simspot_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=10, 
 	celltypes_present=None, celltype_wts=None):
 	'''
 	Parameters:
@@ -178,7 +178,8 @@ def simdata_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=
 		celltypes_present = np.unique(adata_cells.obs[celltype_label])
 	
 	if isinstance(celltypes_present, int):
-		celltypes_present = np.random.choice(np.unique(adata_cells.obs[celltype_label]), celltypes_present)
+		celltypes_present = np.random.choice(np.unique(adata_cells.obs[celltype_label]), celltypes_present, 
+			replace=False)
 
 	if not hasattr(celltypes_present, '__iter__'):
 		raise ValueError('celltypes_present must be int, iterable, or None')
@@ -236,8 +237,79 @@ def simdata_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=
 
 	return pooled_counts, ncounts_per_type, ncells_per_type
 
-def simarray_cells():
-	pass
+def simarray_cells(adata_cells, celltype_label, aar_kwargs, aar_freq=None, n_spots=1000,
+	comp_mode='cells'):
+	'''
+	Parameters:
+	----------
+	adata_cells: AnnData object
+		expression profiles from sn/scRNA-seq experiment, with n_obs=n_cells and n_var=n_genes
+	aar_kwargs: list of dict
+		keyword inputs to simspot_cell for each AAR
+	aar_freq: (n_aars,) ndarray of dtype float
+		frequency of each AAR among spots in the tissue
+	n_spots: int
+		number of spots in simulated array
+	comp_mode: 'cells' or 'counts'
+		whether to use the normalized number of cells per cell type, or counts from each cell 
+		type, to calculate the cell type composition of each spot
+
+	Returns:
+	----------
+	count_mat: (n_genes, n_spots) ndarray of type int
+		array containing the number of counts for each gene in each spot
+	comp_df: DataFrame containing (n_celltypes, n_spots) array of type float
+		simplex cell type compositions for each spot indexed by celltype
+	aar_vec: (n_spots,) ndarray of type int
+		AAR index for each spot in the count/comp matrices
+	'''
+
+	if aar_freq is None:
+		aar_freq = np.ones(len(aar_kwargs)) / len(aar_kwargs)
+	
+	if hasattr(aar_freq, '__len__'):
+		if len(aar_freq) != len(aar_kwargs):
+			raise ValueError('Number of AARs implied by lengths of aar_freq and aar_kwargs must match')
+	else:
+		raise ValueError('aar_freq must be either an iterable or None')
+
+	if not comp_mode in ['cells', 'counts']:
+		raise ValueError('comp_mode must be either "cells" or "counts"')
+
+	n_genes = len(adata_cells.var)
+	celltypes = np.unique(adata_cells.obs[celltype_label])
+	n_celltypes = len(celltypes)
+
+	count_mat = np.zeros((n_genes, n_spots), dtype=int)
+	aar_vec = np.zeros(n_spots, dtype=int)
+
+	comp_mat = np.zeros((n_celltypes, n_spots), dtype=float)
+	comp_df = pd.DataFrame(data=comp_mat, index=celltypes)
+
+	# For each AAR, simulate a number of spots equal to p(AAR) * n_spots
+	csum = 0
+	for aind, freq in enumerate(aar_freq):
+		spots_in = int(np.rint(freq * n_spots))
+
+		for s in range(csum, csum+spots_in):
+			count_vec, counts_per_type, cells_per_type = simspot_cells(
+				adata_cells, celltype_label, **aar_kwargs[aind])
+
+			count_mat[:,s] = count_vec
+			aar_vec[s] = aind
+
+			cells_per_type /= cells_per_type.values.sum()
+			counts_per_type /= counts_per_type.values.sum()
+
+			for ct in cells_per_type.index:
+				if comp_mode == 'cells':
+					comp_df.loc[ct, s] = cells_per_type[ct]
+				else:
+					comp_df.loc[ct, s] = counts_per_type[ct]
+
+		csum += spots_in
+
+	return count_mat, comp_df, aar_vec
 
 
 if __name__ == '__main__':
@@ -275,11 +347,19 @@ if __name__ == '__main__':
 	adat = sc.read_h5ad(cells_file)
 	sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have 1000 total UMIs
 
-	#count_vec, cells_per_type, counts_per_type = simdata_cells(adat, celltype_label='sc_cluster', celltypes_present=4)
-	count_vec, cells_per_type, counts_per_type = simdata_cells(adat, celltype_label='sc_cluster', celltypes_present=['5 Astrocyte - Gfap', '6 Astrocyte - Slc7a10'])
+	#count_vec, cells_per_type, counts_per_type = simspot_cells(adat, celltype_label='sc_cluster', celltypes_present=4)
+	#count_vec, cells_per_type, counts_per_type = simspot_cells(adat, celltype_label='sc_cluster', celltypes_present=['5 Astrocyte - Gfap', '6 Astrocyte - Slc7a10'])
 
-	print(count_vec.shape, count_vec.sum(), count_vec.min(), count_vec.max())
-	print(cells_per_type)
-	print(counts_per_type)
+	#print(count_vec.shape, count_vec.sum(), count_vec.min(), count_vec.max())
+	#print(cells_per_type)
+	#print(counts_per_type)
+
+	aar_kwargs = [
+		{'celltypes_present': 4},
+		{'celltypes_present': ['5 Astrocyte - Gfap', '6 Astrocyte - Slc7a10']}
+	]
+
+	count_mat, comp_df, aar_vec = simarray_cells(adat, celltype_label='sc_cluster', 
+		aar_kwargs=aar_kwargs, n_spots=2, comp_mode='counts')
 	
 
