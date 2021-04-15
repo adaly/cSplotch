@@ -72,7 +72,7 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 	# Simulate spots by combining individual cells
 	else:
 		adat = sc.read_h5ad(cells_file)
-		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have 1000 total UMIs
+		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
 
 		# Filter AnnData to only include specified cell types
 		adat = adat[adat.obs['sc_cluster'].isin(included_types)]
@@ -83,7 +83,8 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
 			n_spots=spots_per_array*n_arrays, comp_mode='cells')
 		
-		comp_true = comp_df.values
+		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
+		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
 
 	# Add Gaussian noise to composition matrix and normalize
 	if sigma > 0:
@@ -113,8 +114,10 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 
 # Simulate tissue comprised of a single AAR with some cell types observed as a 
 # composite signature
-def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
-	df = pd.read_csv(scdat, sep=",", index_col=0)
+def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='clusters'):
+
+	if mode not in ['cells', 'clusters']:
+		raise ValueError('Mode must be either "cells" or "clusters"')
 
 	included_types = [
 		'2 Unassigned',                   # 'BG'
@@ -125,14 +128,33 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 		'16 Alpha motor neurons',         # 'Neuron'
 		'17 Gamma motor neurons'          # 'Neuron'
 	]
-	cmat = df[included_types].values - 1
 	n_celltypes = len(included_types)
 
-	# Simulate an array with all cell types present in uniformly random combination
-	spot_kwargs = [{'celltypes_present': np.arange(n_celltypes)}]
+	if mode == 'clusters':
+		df = pd.read_csv(scdat, sep=",", index_col=0)
+		cmat = df[included_types].values - 1
 
-	count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [1.], 
-		n_spots=spots_per_array*n_arrays)
+		# Simulate an array with all cell types present in uniformly random combination
+		spot_kwargs = [{'celltypes_present': np.arange(n_celltypes)}]
+
+		count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [1.], 
+			n_spots=spots_per_array*n_arrays)
+
+	else:
+		adat = sc.read_h5ad(cells_file)
+		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
+
+		# Filter AnnData to only include specified cell types
+		adat = adat[adat.obs['sc_cluster'].isin(included_types)]
+
+		# Simulate arrays with all included cell types present in uniformly random proportions
+		spot_kwargs = [{'celltypes_present': included_types, 'ncells_in_spot':10}]
+
+		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
+			n_spots=spots_per_array*n_arrays, comp_mode='cells')
+		
+		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
+		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
 
 	# Create three composite profiles by combining similar scRNA signals
 	comp_obs = np.zeros((3, comp_true.shape[1]))
@@ -166,8 +188,10 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 # Simulate tissue comprised of two AARs (WM and GM) with some cell types observed as a
 # composite signature
-def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.'):
-	df = pd.read_csv(scdat, sep=",", index_col=0)
+def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='clusters'):
+
+	if mode not in ['cells', 'clusters']:
+		raise ValueError('Mode must be either "cells" or "clusters"')
 
 	included_types = [
 		'2 Unassigned',          # BG (WM + GM)
@@ -182,16 +206,41 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 		'16 Alpha motor neurons', # Neuron (GM)
 		'17 Gamma motor neurons', # Neuron (GM)
 	]
-	cmat = df[included_types].values - 1
 	n_celltypes = len(included_types)
 
-	spot_kwargs = [
-		{'celltypes_present': np.array([0,1,2,4,5,6,7,8])},  # WM
-		{'celltypes_present': np.array([0,1,3,4,6,7,9,10])}  # GM
-	]
+	if mode == 'clusters':
+		df = pd.read_csv(scdat, sep=",", index_col=0)
+		cmat = df[included_types].values - 1	
 
-	count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [.5, .5], 
-		n_spots=spots_per_array*n_arrays)
+		spot_kwargs = [
+			{'celltypes_present': np.array([0,1,2,4,5,6,7,8])},  # WM
+			{'celltypes_present': np.array([0,1,3,4,6,7,9,10])}  # GM
+		]
+
+		count_mat, comp_true, aar_vec = simarray(cmat, spot_kwargs, [.5, .5], 
+			n_spots=spots_per_array*n_arrays)
+
+	else:
+		adat = sc.read_h5ad(cells_file)
+		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
+
+		# Filter AnnData to only include specified cell types
+		adat = adat[adat.obs['sc_cluster'].isin(included_types)]
+
+		spot_kwargs = [
+			{'celltypes_present': ['2 Unassigned', '3 Unassigned', '5 Astrocyte - Gfap', '8 Endothelial', 
+								   '9 VLMC', '10 Microglia', '11 Oligo Mature', '12 Oligodendrocyte Myelinating'],
+			 'ncells_in_spot': 10},  # WM
+			{'celltypes_present': ['2 Unassigned', '3 Unassigned', '6 Astrocyte - Slc7a10', '8 Endothelial', 
+			                       '10 Microglia', '11 Oligo Mature', '16 Alpha motor neurons', '17 Gamma motor neurons'],
+			 'ncells_in_spot': 10}  # GM
+		]
+
+		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
+			n_spots=spots_per_array*n_arrays, comp_mode='cells')
+
+		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
+		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
 
 	# Create 3 composite profiles by combining similar scRNA-seq profiles
 	comp_obs = np.zeros((3, comp_true.shape[1]))
@@ -224,9 +273,6 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 
 if __name__ == '__main__':
-	simdata_a1(2, spots_per_array=10, sigma=0., output_dir='simdata_a1_sigma_0.0', mode='cells')
-	
-	#simdata_a1(12, spots_per_array=2000, sigma=0.1, output_dir='simdata_a1_sigma_0.1')
-	#simdata_a1_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a1_sigma_0.0_composite')
-	#simdata_a2_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a2_sigma_0.0_composite')
-	#simdata_a2_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_a2_sigma_0.0_composite')
+	#simdata_a1(2, spots_per_array=10, sigma=0., output_dir='simdata_a1_sigma_0.0', mode='cells')	
+	#simdata_a1_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', mode='cells')
+	simdata_a2_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', mode='cells')
