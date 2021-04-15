@@ -1,7 +1,13 @@
 import os
 import numpy as np
 import pandas as pd
+import scanpy as sc
+from anndata import AnnData
 
+
+#########################################################################################
+##         Simulation from average expression profiles (one per cell type)             ##
+#########################################################################################
 
 # Simulate an ST spot from expression profiles of component cell types
 def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None, 
@@ -129,11 +135,116 @@ def simarray(celltype_profiles, aar_kwargs, aar_freq, n_spots=2000):
 	return count_mat, comp_mat, aar_vec
 
 
+#########################################################################################
+##               Simulation from cell-level data (sn/scRNA-seq matrix)                 ##
+#########################################################################################
+
+def simdata_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=10, 
+	celltypes_present=None, celltype_wts=None):
+	'''
+	Parameters:
+	----------
+	adata_cells: AnnData object
+		expression profiles from sn/scRNA-seq experiment, with n_obs=n_cells and n_var=n_genes
+	celltype_label: str
+		column of adata_cells.obs in which celltype labels are found
+	spot_depth: int
+		number of total UMIs to draw
+	ncells_in_spot: int
+		total number of cells present in spot
+	celltypes_present: int, array-like of str, or None
+		if int, number of unique cell types present (chosen at random)
+		if array-like, set of unique celltypes to use
+		if None, cells are drawn at random from all present
+	celltype_wts: (n_celltypes,) ndarray of dtype float, function, or None
+		if ndarray, relative proportions of celltypes specified by celltypes_present
+		if function, returns simplex over celltypes specified by celltypes_present
+		if None, weights drawn uniformly randomly
+
+	Returns:
+	----------
+	count_vec: (n_genes,) ndarray 
+		vector containing counts for each gene in the simulated spot
+	ncounts_per_type: pd.Series
+		total UMI counts derived from each included cell type 
+	ncells_per_type: pd.Series
+		total number of cells from each included cell type
+	'''
+
+	if celltypes_present is not None and celltype_label is None:
+		raise ValueError('A celltype_label must be provided if celltypes_present is specified')
+
+	if celltypes_present is None:
+		celltypes_present = np.unique(adata_cells.obs[celltype_label])
+	
+	if isinstance(celltypes_present, int):
+		celltypes_present = np.random.choice(np.unique(adata_cells.obs[celltype_label]), celltypes_present)
+
+	if not hasattr(celltypes_present, '__iter__'):
+		raise ValueError('celltypes_present must be int, iterable, or None')
+
+	# Determine proportions of cell types present
+	if celltype_wts is None:
+		W = np.random.random(len(celltypes_present))
+	elif callable(celltype_wts):
+		W = celltype_wts()
+
+		if not hasattr(W, 'shape') or W.shape != (len(celltypes_present),):
+			raise ValueError('celltype_wts function must return a 1d array of length n_celltypes')
+
+		W = np.maximum(W, np.zeros_like(W))
+	elif hasattr(celltype_wts, 'shape') and celltype_wts.shape == (len(celltypes_present,)):
+		W = celltype_wts
+	else:
+		raise ValueError('celltype_wts must be an array of length n_celltypes')
+
+	W /= np.sum(W)  # ensure weights sum to 1 (valid simplex)
+
+	# Determine number of cells from each type and sample
+	ncells_per_type = np.rint(W * ncells_in_spot).astype(int)
+	ncounts_per_type = np.zeros_like(ncells_per_type)
+	selected_cells = []
+
+	for i, (ct, n) in enumerate(zip(celltypes_present, ncells_per_type)):
+		if n > 0:
+			in_type = adata_cells[adata_cells.obs[celltype_label]==ct]
+
+			# If we try to sample more cells of the current type than exist
+			if len(in_type) < n:
+				n = len(in_type)
+				ncells_per_type[i] = n
+
+			s = in_type[np.random.choice(len(in_type), n, replace=False)]
+			cmat = np.array(s.X.todense())
+
+			# TODO: round to integers here?
+			selected_cells.append(cmat)
+			ncounts_per_type[i] = cmat.sum()
+		else:
+			ncounts_per_type[i] = 0
+
+	pooled_counts = np.concatenate(selected_cells).sum(axis=0)
+
+	# TODO: stochastic sampling of counts is probably smarter...
+	if pooled_counts.sum() > spot_depth:
+		r = spot_depth / pooled_counts.sum()
+		pooled_counts = np.rint(r * pooled_counts)
+		ncounts_per_type = np.rint(r * ncounts_per_type)
+
+	ncounts_per_type = pd.Series(data=ncounts_per_type, index=celltypes_present)
+	ncells_per_type = pd.Series(data=ncells_per_type, index=celltypes_present)
+
+	return pooled_counts, ncounts_per_type, ncells_per_type
+
+def simarray_cells():
+	pass
+
+
 if __name__ == '__main__':
 	# Rosenberg average scRNA cluster profiles from mouse spinal cord
 	# (44 cell type clusters, 26893 genes)
 	# Note: Cat's mouse Visium data has 24 arrays, ~2k spots/array, 13990 genes
-	scdat = "../data/aam8999_TableS10.csv"
+	'''scdat = "../data/aam8999_TableS10.csv"
 	df = pd.read_csv(scdat, sep=",", index_col=0)
 	cmat = (df.values-1)[:,:7]
 
@@ -145,7 +256,7 @@ if __name__ == '__main__':
 	counts, wts = simspot(cmat, celltype_wts=None, spot_depth=10000)
 
 	print(counts.sum())
-	print(wts)
+	print(wts)'''
 
 	'''spot_args = [
 		{'celltypes_present': np.array([1,2,4])},
@@ -158,3 +269,17 @@ if __name__ == '__main__':
 	print(count_mat, count_mat.sum(axis=0), count_mat.max(axis=0))
 	print(comp_mat, comp_mat.sum(axis=0))
 	print(aar_vec)'''
+
+	# Rosenberg snRNA-seq cell data
+	cells_file = '../data/GSM3017261_20000_SC_nuclei.h5ad'
+	adat = sc.read_h5ad(cells_file)
+	sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have 1000 total UMIs
+
+	#count_vec, cells_per_type, counts_per_type = simdata_cells(adat, celltype_label='sc_cluster', celltypes_present=4)
+	count_vec, cells_per_type, counts_per_type = simdata_cells(adat, celltype_label='sc_cluster', celltypes_present=['5 Astrocyte - Gfap', '6 Astrocyte - Slc7a10'])
+
+	print(count_vec.shape, count_vec.sum(), count_vec.min(), count_vec.max())
+	print(cells_per_type)
+	print(counts_per_type)
+	
+
