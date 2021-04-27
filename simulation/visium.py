@@ -33,7 +33,8 @@ covariates = {
 }
 
 # Simulate tissue comprised of a single AAR with all cell types observed
-def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='clusters'):
+def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', 
+	sim_mode='clusters', comp_mode='cells'):
 	'''
 	Parameters:
 	----------
@@ -45,10 +46,17 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 		standard deviation of Gaussian noise to be added to each annotation
 	output_dir: path
 		directory in which to save output files 'covariates.p' and 'counts.npy'
+	sim_mode: 'cells' or 'clusters'
+		whether to use individual cells or average cluster profiles to simulate spots
+	comp_mode: 'cells' or 'counts'
+		for cell simulations, whether to use cells/type or counts/type to characterize 
+		spot composition (counts/type is more accurate but less realistic to observe).
 	'''
 
-	if mode not in ['cells', 'clusters']:
-		raise ValueError('Mode must be either "cells" or "clusters"')
+	if sim_mode not in ['cells', 'clusters']:
+		raise ValueError('sim_mode must be either "cells" or "clusters"')
+	if comp_mode not in ['cells', 'counts']:
+		raise ValueError('comp_mode must be either "cells" or "counts"')
 
 	included_types = [
 		'6 Astrocyte - Slc7a10',
@@ -59,7 +67,7 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 	n_celltypes = len(included_types)
 
 	# Simulate spots by drawing from characteristic distributions
-	if mode == 'clusters':
+	if sim_mode == 'clusters':
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1
 		
@@ -81,7 +89,7 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 		spot_kwargs = [{'celltypes_present': included_types, 'ncells_in_spot':10}]
 
 		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
-			n_spots=spots_per_array*n_arrays, comp_mode='cells')
+			n_spots=spots_per_array*n_arrays, comp_mode=comp_mode)
 		
 		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
 		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
@@ -114,10 +122,13 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='c
 
 # Simulate tissue comprised of a single AAR with some cell types observed as a 
 # composite signature
-def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='clusters'):
+def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', 
+	sim_mode='clusters', comp_mode='cells'):
 
-	if mode not in ['cells', 'clusters']:
-		raise ValueError('Mode must be either "cells" or "clusters"')
+	if sim_mode not in ['cells', 'clusters']:
+		raise ValueError('sim_mode must be either "cells" or "clusters"')
+	if comp_mode not in ['cells', 'counts']:
+		raise ValueError('comp_mode must be either "cells" or "counts"')
 
 	included_types = [
 		'2 Unassigned',                   # 'BG'
@@ -130,7 +141,7 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 	]
 	n_celltypes = len(included_types)
 
-	if mode == 'clusters':
+	if sim_mode == 'clusters':
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1
 
@@ -151,7 +162,7 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 		spot_kwargs = [{'celltypes_present': included_types, 'ncells_in_spot':10}]
 
 		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
-			n_spots=spots_per_array*n_arrays, comp_mode='cells')
+			n_spots=spots_per_array*n_arrays, comp_mode=comp_mode)
 		
 		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
 		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
@@ -188,10 +199,13 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 # Simulate tissue comprised of two AARs (WM and GM) with some cell types observed as a
 # composite signature
-def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', mode='clusters'):
+def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.', 
+	sim_mode='clusters', comp_mode='cells'):
 
-	if mode not in ['cells', 'clusters']:
-		raise ValueError('Mode must be either "cells" or "clusters"')
+	if sim_mode not in ['cells', 'clusters']:
+		raise ValueError('sim_mode must be either "cells" or "clusters"')
+	if comp_mode not in ['cells', 'counts']:
+		raise ValueError('comp_mode must be either "cells" or "counts"')
 
 	included_types = [
 		'2 Unassigned',          # BG (WM + GM)
@@ -208,7 +222,7 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 	]
 	n_celltypes = len(included_types)
 
-	if mode == 'clusters':
+	if sim_mode == 'clusters':
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1	
 
@@ -237,7 +251,7 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 		]
 
 		count_mat, comp_df, aar_vec = simarray_cells(adat, 'sc_cluster', spot_kwargs,
-			n_spots=spots_per_array*n_arrays, comp_mode='cells')
+			n_spots=spots_per_array*n_arrays, comp_mode=comp_mode)
 
 		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
 		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
@@ -273,6 +287,6 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 
 if __name__ == '__main__':
-	#simdata_a1(2, spots_per_array=10, sigma=0., output_dir='simdata_a1_sigma_0.0', mode='cells')	
-	#simdata_a1_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', mode='cells')
-	simdata_a2_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', mode='cells')
+	#simdata_a1(2, spots_per_array=10, sigma=0., output_dir='simdata_a1_sigma_0.0', sim_mode='cells', comp_mode='counts')	
+	#simdata_a1_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
+	simdata_a2_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')

@@ -227,23 +227,28 @@ def simspot_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=
 				ncells_per_type[i] = n
 
 			s = in_type[np.random.choice(len(in_type), n, replace=False)]
-			cmat = np.array(s.X.todense())
+			cmat = np.array(s.X.todense())   # (cells, genes)
+			cvec = np.rint(cmat.sum(axis=0)) # rounding after summation over cells minimizes deviation from desired total
 
-			# TODO: round to integers here?
-			selected_cells.append(cmat)
-			ncounts_per_type[i] = cmat.sum()
+			selected_cells.append(cvec)
+			ncounts_per_type[i] = cvec.sum()
 		else:
+			selected_cells.append(np.zeros(len(adata_cells.var)))
 			ncounts_per_type[i] = 0
 
-	pooled_counts = np.concatenate(selected_cells)
+	pooled_counts = np.vstack(selected_cells)
+
+	# Stochastically remove counts until we are within spot_depth
+	for i in range(max(0, int(pooled_counts.sum()-spot_depth))):
+		c,g = pooled_counts.nonzero()
+		sel = np.random.choice(len(c), p=pooled_counts[c,g]/np.sum(pooled_counts[c,g]))
+
+		pooled_counts[c[sel], g[sel]] -= 1
+		ncounts_per_type[c[sel]] -= 1
+
+	assert ncounts_per_type.sum() == pooled_counts.sum(), "something has gone horribly wrong..."
+
 	pooled_counts = pooled_counts.sum(axis=0)
-
-	# TODO: stochastic sampling of counts is probably smarter...
-	if pooled_counts.sum() > spot_depth:
-		r = spot_depth / pooled_counts.sum()
-		pooled_counts = np.rint(r * pooled_counts)
-		ncounts_per_type = np.rint(r * ncounts_per_type)
-
 	ncounts_per_type = pd.Series(data=ncounts_per_type, index=celltypes_present)
 	ncells_per_type = pd.Series(data=ncells_per_type, index=celltypes_present)
 
@@ -372,7 +377,7 @@ if __name__ == '__main__':
 	]
 
 	count_mat, comp_df, aar_vec = simarray_cells(adat, celltype_label='sc_cluster', 
-		aar_kwargs=aar_kwargs, n_spots=10, comp_mode='counts')
+		aar_kwargs=aar_kwargs, n_spots=1000, comp_mode='counts')
 
 	print(count_mat.sum(axis=0))
 
