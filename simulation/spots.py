@@ -148,7 +148,7 @@ def simarray(celltype_profiles, aar_kwargs, aar_freq, n_spots=2000):
 ##               Simulation from cell-level data (sn/scRNA-seq matrix)                 ##
 #########################################################################################
 
-def simspot_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=10, 
+def simspot_cells(adata_cells, celltype_label, ncells_in_spot=10, max_spot_depth=None,
 	celltypes_present=None, celltype_wts=None):
 	'''
 	Parameters:
@@ -157,10 +157,11 @@ def simspot_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=
 		expression profiles from sn/scRNA-seq experiment, with n_obs=n_cells and n_var=n_genes
 	celltype_label: str
 		column of adata_cells.obs in which celltype labels are found
-	spot_depth: int
-		number of total UMIs to draw
 	ncells_in_spot: int
 		total number of cells present in spot
+	max_spot_depth: int or None
+		if int, maximum number of counts captured from cells present
+		if None, all counts from included cells are captured
 	celltypes_present: int, array-like of str, or None
 		if int, number of unique cell types present (chosen at random)
 		if array-like, set of unique celltypes to use
@@ -239,12 +240,13 @@ def simspot_cells(adata_cells, celltype_label, spot_depth=10000, ncells_in_spot=
 	pooled_counts = np.vstack(selected_cells)
 
 	# Stochastically remove counts until we are within spot_depth
-	for i in range(max(0, int(pooled_counts.sum()-spot_depth))):
-		c,g = pooled_counts.nonzero()
-		sel = np.random.choice(len(c), p=pooled_counts[c,g]/np.sum(pooled_counts[c,g]))
+	if max_spot_depth is not None:
+		for i in range(max(0, int(pooled_counts.sum()-max_spot_depth))):
+			c,g = pooled_counts.nonzero()
+			sel = np.random.choice(len(c), p=pooled_counts[c,g]/np.sum(pooled_counts[c,g]))
 
-		pooled_counts[c[sel], g[sel]] -= 1
-		ncounts_per_type[c[sel]] -= 1
+			pooled_counts[c[sel], g[sel]] -= 1
+			ncounts_per_type[c[sel]] -= 1
 
 	assert ncounts_per_type.sum() == pooled_counts.sum(), "something has gone horribly wrong..."
 
