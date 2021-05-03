@@ -105,7 +105,7 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.',
 	# Save covariate data in dictionary formatted as input to stan model
 	# (Count data for given gene must be added in 'counts' field)
 	covariates['N_tissues'] = n_arrays
-	covariates['N_spots'] = n_arrays * spots_per_array
+	covariates['N_spots'] = n_arrays * [spots_per_array]
 	covariates['N_covariates'] = 1
 	covariates['N_celltypes'] = n_celltypes
 	covariates['tissue_mapping'] = n_arrays * [1]
@@ -287,6 +287,8 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 
 if __name__ == '__main__':
-	#simdata_a1(2, spots_per_array=10, sigma=0., output_dir='simdata_a1_sigma_0.0', sim_mode='cells', comp_mode='counts')	
-	#simdata_a1_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
-	simdata_a2_composite(2, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
+	simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecells', sim_mode='cells', comp_mode='cells')	
+	simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecounts', sim_mode='cells', comp_mode='counts')
+
+	#simdata_a1_composite(12, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
+	#simdata_a2_composite(12, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
