@@ -81,12 +81,14 @@ def read_stan_csv(filename,variables):
   return samples
 
 def savagedickey(samples1,samples2,prior1_mean=0.0,prior1_std=2.0,prior2_mean=0.0,prior2_std=2.0):
-  Delta_theta = (numpy.array([samples1]).T - samples2).flatten(0)
+  Delta_theta = (numpy.array([samples1]).T - samples2).flatten()
   density = scipy.stats.kde.gaussian_kde(Delta_theta,bw_method='scott')
-
+  
   numerator = scipy.stats.norm.pdf(0,loc=prior1_mean-prior2_mean,scale=numpy.sqrt(prior1_std**2+prior2_std**2))
   denominator = density.evaluate(0)[0]
-
+  
+  if denominator==0:
+      return numpy.inf
   return numerator/denominator
 
 def get_variable_mappings(count_files,metadata,
