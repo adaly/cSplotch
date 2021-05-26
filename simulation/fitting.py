@@ -51,7 +51,6 @@ beta_level_1 = post['beta_level_1']
 print("beta_level_1 mean:", beta_level_1.mean(axis=0))
 print("beta_level_1 SD:", beta_level_1.std(axis=0))
 
-np.save(os.path.join(args.output_dir, 'beta_%d_mu' % args.gene), beta_level_1.mean(axis=0))
-np.save(os.path.join(args.output_dir, 'beta_%d_sigma' % args.gene), beta_level_1.std(axis=0))
+np.save(os.path.join(args.output_dir, 'beta_%d' % args.gene), beta_level_1)
 np.save(os.path.join(args.output_dir, 'lambda_%d_mu' % args.gene), np.exp(beta_level_1).mean(axis=0))
 np.save(os.path.join(args.output_dir, 'lambda_%d_sigma' % args.gene), np.exp(beta_level_1).std(axis=0))
