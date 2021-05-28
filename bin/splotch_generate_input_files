@@ -30,7 +30,7 @@ def generate_splotch_inputs(count_files,metadata_file,
                             maximum_number_of_spots_per_tissue_section,
                             median_sequencing_depth,
                             n_levels,minimum_sequencing_depth,
-                            output_directory,car,zip,
+                            output_directory,car,zi,nb,
                             Visium=False,compositional=False):
 
   # initialize a bunch of variables for keeping tissue section specific data
@@ -306,7 +306,7 @@ def generate_splotch_inputs(count_files,metadata_file,
                              coordinates_list,size_factors_list,
                              aar_matrix_list,level_mappings,
                              tissue_mapping_list,
-                             W_list,W_n_list,car,zip,
+                             W_list,W_n_list,car,zi,nb,
                              compositional,cellcomp_matrix_list)
 
   # write input data files for each gene separately
@@ -332,7 +332,7 @@ def generate_splotch_inputs(count_files,metadata_file,
   filenames_coordinates = generate_column_labels(files_list,coordinates_list)
 
   info_dict = {'genes':genes,'filenames_and_coordinates':filenames_coordinates,'annotation_mapping':aar_names,'beta_mapping':conditions_to_variables,
-               'n_levels':n_levels,'metadata':metadata,'scaling_factor':median_sequencing_depth,'car':car,'zip':car}
+               'n_levels':n_levels,'metadata':metadata,'scaling_factor':median_sequencing_depth,'car':car,'zi':zi,'nb':nb}
   if compositional:
     info_dict['celltype_mapping'] = celltype_names
   pickle.dump(info_dict,open(os.path.normpath('%s/information.p'%(output_directory)),'wb'))
@@ -371,8 +371,10 @@ if __name__ == '__main__':
                       help='number of spots threshold for identifying overlapping tissue sections (default is 2000)')
   parser.add_argument('-n','--no-car',action='store_false',dest='car',required=False,
                       help='disable the conditional autoregressive prior')
-  parser.add_argument('-z','--no-zip',action='store_false',dest='zip',required=False,
-                      help='use the Poisson likelihood instead of the zero-inflated Poisson likelihood')
+  parser.add_argument('-z','--no-zi',action='store_false',dest='zi',required=False,
+                      help='disable zero inflation on the likelihood function for counts.')
+  parser.add_argument('-b', '--neg-binomial',action='store_true',dest='nb',required=False,
+                      help='use the negative binomial likelihood instead of the Poisson likelihood')
   parser.add_argument('-o','--output_directory',action='store',
                       dest='output_directory',type=str,
                       required=False,default='data',
@@ -385,7 +387,8 @@ if __name__ == '__main__':
                       help='Employ per-spot compositional labels to deconvolve contributions of individual cell types.')
 
   parser.set_defaults(car=True)
-  parser.set_defaults(zip=True)
+  parser.set_defaults(zi=True)
+  parser.set_defaults(nb=False)
   options = parser.parse_args()
 
   print(options.count_files)
@@ -407,7 +410,8 @@ if __name__ == '__main__':
                           options.maximum_number_of_spots_per_tissue_section,
                           options.scaling_factor,options.n_levels,
                           options.minimum_sequencing_depth,options.output_directory,
-                          options.car,options.zip,
+                          options.car,options.zi,
+                          options.nb,
                           options.Visium,
                           options.compositional)
   sys.exit(0)

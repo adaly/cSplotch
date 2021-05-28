@@ -27,7 +27,8 @@ data {
   int<lower=0> N_level_2; // number of level 2 variables
   int<lower=0> N_level_3; // number of level 3 variables
 
-  int<lower=0,upper=1> zip;
+  int<lower=0,upper=1> nb;  // whether to use negative binomial (defaults to Poisson)
+  int<lower=0,upper=1> zi;  // whether to use zero inflation
   int<lower=0,upper=1> car;
 
   // level 1 index of each level 2 variable  (this is used for indexing beta_level_1)
@@ -94,7 +95,10 @@ parameters {
   real<lower=0> sigma_level_3[N_level_3 ? 1 : 0];
   
   // probability of extra zeros
-  real<lower=0,upper=1> theta[zip ? 1 : 0];
+  real<lower=0,upper=1> theta[zi ? 1 : 0];
+
+  // overdispersion parameter for negative binomial
+  real<lower=0.000001> phi[nb ? 1 : 0];
 
   // non-centered parametrization of spot-level variation
   vector[sum_N_spots] noise_raw;
@@ -103,6 +107,9 @@ parameters {
 transformed parameters {
   // rate parameter
   vector[sum_N_spots] log_lambda;
+
+  // dispersion parameter
+  vector[nb ? sum_N_spots : 0] phi_arr;
 
   // level 1 coefficients
   row_vector[N_celltypes] beta_level_1[N_level_1, N_covariates];
@@ -193,6 +200,14 @@ transformed parameters {
       }
     }
   }
+
+  // broadcast the gene-wide dispersion parameter phi into an array of size sum_N_spots
+  // used for likelihood calculation in case of NB distribution
+  if (nb) {
+    for (i in 1:sum_N_spots) {
+      phi_arr[i] = phi[1];
+    }
+  }
 }
 
 model {
@@ -203,7 +218,7 @@ model {
     psi ~ sparse_car(tau[1],a[1],W_sparse,D_sparse,eig_values,sum_N_spots,W_n[1]);
   }
 
-  if (zip) {
+  if (zi) {
     // parameter of probability of extra zeros
     theta ~ beta(1,2);
   }
@@ -226,19 +241,38 @@ model {
     }
   }
 
-  if (zip) {
-  // zero-inflated Poisson likelihood
-    for (i in 1:sum_N_spots) {
-      if (counts[i] == 0)
-        target += log_sum_exp(bernoulli_lpmf(1|theta[1]),
-                              bernoulli_lpmf(0|theta[1])
-                                +poisson_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i]));
-      else
-        target += bernoulli_lpmf(0|theta[1])
-                    + poisson_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i]);
+  if (nb) {
+    if (zi) {
+    // zero-inflated negative binomial (ZINB) likelihood
+      for (i in 1:sum_N_spots) {
+        if (counts[i] == 0)
+          target += log_sum_exp(bernoulli_lpmf(1|theta[1]),
+                                bernoulli_lpmf(0|theta[1])
+                                  + neg_binomial_2_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i], phi_arr));
+        else
+          target += bernoulli_lpmf(0|theta[1])
+                      + neg_binomial_2_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i], phi_arr);
+      }
+    } else {
+      phi ~ gamma(2,1); // inverse overdispersion (var = mu + mu^2/phi)
+      counts ~ neg_binomial_2_log(log_lambda+log_size_factors, phi_arr);
     }
-  } else {
-    counts ~ poisson_log(log_lambda+log_size_factors);
+  } 
+  else {
+    if (zi) {
+    // zero-inflated Poisson likelihood
+      for (i in 1:sum_N_spots) {
+        if (counts[i] == 0)
+          target += log_sum_exp(bernoulli_lpmf(1|theta[1]),
+                                bernoulli_lpmf(0|theta[1])
+                                  +poisson_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i]));
+        else
+          target += bernoulli_lpmf(0|theta[1])
+                      + poisson_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i]);
+      }
+    } else {
+      counts ~ poisson_log(log_lambda+log_size_factors);
+    }
   }
 }
 

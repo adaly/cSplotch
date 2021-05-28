@@ -372,7 +372,7 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
                         N_levels,coordinates_list,
                         size_factors_list,aar_matrix_list, 
                         level_mappings,tissue_mapping_list,
-                        W_list,W_n_list,car,zip,
+                        W_list,W_n_list,car,zi,nb,
                         compositional,cellcomp_matrix_list):
 
   data = {'N_spots': N_spots_list,
@@ -380,7 +380,8 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
           'N_covariates': N_covariates,
           'tissue_mapping': tissue_mapping_list,
           'N_levels': len(N_levels),
-          'zip': 1*zip,
+          'zi': 1*zi,
+          'nb': 1*nb,
           'car': 1*car}
 
   for idx in range(0,len(N_levels)):

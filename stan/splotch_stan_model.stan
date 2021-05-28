@@ -26,7 +26,7 @@ data {
   int<lower=0> N_level_2; // number of level 2 variables
   int<lower=0> N_level_3; // number of level 3 variables
 
-  int<lower=0,upper=1> zip;
+  int<lower=0,upper=1> zi;
   int<lower=0,upper=1> car;
 
   // level 1 index of each level 2 variable  (this is used for indexing beta_level_1)
@@ -91,7 +91,7 @@ parameters {
   real<lower=0> sigma_level_3[N_level_3 ? 1 : 0];
   
   // probability of extra zeros
-  real<lower=0,upper=1> theta[zip ? 1 : 0];
+  real<lower=0,upper=1> theta[zi ? 1 : 0];
 
   // non-centered parametrization of spot-level variation
   vector[sum_N_spots] noise_raw;
@@ -188,7 +188,7 @@ model {
     psi ~ sparse_car(tau[1],a[1],W_sparse,D_sparse,eig_values,sum_N_spots,W_n[1]);
   }
 
-  if (zip) {
+  if (zi) {
     // parameter of probability of extra zeros
     theta ~ beta(1,2);
   }
@@ -206,7 +206,7 @@ model {
     sigma_level_3[1] ~ normal(0,1);
   to_vector(beta_raw) ~ normal(0,1);
 
-  if (zip) {
+  if (zi) {
   // zero-inflated Poisson likelihood
     for (i in 1:sum_N_spots) {
       if (counts[i] == 0)

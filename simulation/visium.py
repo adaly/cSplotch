@@ -24,7 +24,7 @@ covariates = {
 	'N_level_3': 0,
 	'level_2_mapping': np.array([], dtype=int),
 	'level_3_mapping': np.array([], dtype=int),
-	'zip': 0,
+	'zi': 0,
 	'car': 0,
 	'W_n': np.array([], dtype=int),
 	'W_sparse': np.zeros((0,0), dtype=int),
@@ -68,6 +68,8 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.',
 
 	# Simulate spots by drawing from characteristic distributions
 	if sim_mode == 'clusters':
+		covariates['nb'] = 0
+
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1
 		
@@ -79,6 +81,8 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.',
 
 	# Simulate spots by combining individual cells
 	else:
+		covariates['nb'] = 1
+
 		adat = sc.read_h5ad(cells_file)
 		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
 
@@ -93,6 +97,9 @@ def simdata_a1(n_arrays, spots_per_array=2000, sigma=0., output_dir='.',
 		
 		# Ensure ordering of celltypes in comp matrix matches that of included_celltypes
 		comp_true = np.vstack([comp_df.loc[c,:].values for c in included_types])
+
+		# Account for drop-out events in single-cell data with ZIP
+		#covariates['zip'] = 1
 
 	# Add Gaussian noise to composition matrix and normalize
 	if sigma > 0:
@@ -142,6 +149,8 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 	n_celltypes = len(included_types)
 
 	if sim_mode == 'clusters':
+		covariates['nb'] = 0
+
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1
 
@@ -152,6 +161,8 @@ def simdata_a1_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 			n_spots=spots_per_array*n_arrays)
 
 	else:
+		covariates['nb'] = 1
+
 		adat = sc.read_h5ad(cells_file)
 		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
 
@@ -223,6 +234,8 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 	n_celltypes = len(included_types)
 
 	if sim_mode == 'clusters':
+		covariates['nb'] = 0
+
 		df = pd.read_csv(scdat, sep=",", index_col=0)
 		cmat = df[included_types].values - 1	
 
@@ -235,6 +248,8 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 			n_spots=spots_per_array*n_arrays)
 
 	else:
+		covariates['nb'] = 1
+		
 		adat = sc.read_h5ad(cells_file)
 		sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have ~1000 total UMIs
 
@@ -287,8 +302,9 @@ def simdata_a2_composite(n_arrays, spots_per_array=2000, sigma=0., output_dir='.
 
 
 if __name__ == '__main__':
-	simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecells', sim_mode='cells', comp_mode='cells')	
-	simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecounts', sim_mode='cells', comp_mode='counts')
+	#simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecells', sim_mode='cells', comp_mode='cells')	
+	#simdata_a1(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_Ecounts', sim_mode='cells', comp_mode='counts')
 
-	#simdata_a1_composite(12, spots_per_array=10, sigma=0, output_dir='simdata_a1_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
-	#simdata_a2_composite(12, spots_per_array=10, sigma=0, output_dir='simdata_a2_sigma_0.0_composite', sim_mode='cells', comp_mode='counts')
+	#simdata_a1_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a1_s0_composite', sim_mode='cells', comp_mode='cells')
+	
+	simdata_a2_composite(12, spots_per_array=2000, sigma=0, output_dir='simdata_cells/simdata_a2_s0_composite', sim_mode='cells', comp_mode='cells')
