@@ -36,7 +36,7 @@ def de_genes_cells(adata_cells, celltype_label, equal_var=True, pool_others=True
 		columns=pd.MultiIndex.from_product([celltypes, ['lfc', 'p']], names=['cell_type', 'statistic']),
 		index=adata_cells.var.index)
 
-	def _lfc_ttest(cells_in, cells_out):
+	def _lfc_ttest(cells_in, cells_out, g):
 		s1 = np.array(cells_in[:,g].X.todense()).squeeze()
 		s2 = np.array(cells_out[:,g].X.todense()).squeeze()
 
@@ -66,14 +66,14 @@ def de_genes_cells(adata_cells, celltype_label, equal_var=True, pool_others=True
 		for g in adata_cells.var.index:
 			# Calculate LFC + p-value between current celltype and all others
 			if pool_others:
-				de_genes.loc[g, ct] = _lfc_ttest(cells_in, cells_out)
+				de_genes.loc[g, ct] = _lfc_ttest(cells_in, cells_out, g)
 
 			# Calculate LFC + p-value between current celltype and most similar celltype
 			else:
 				max_p = -np.inf
 				for ct2 in [x for x in celltypes if x != ct]:
 					cells_out = adata_cells[adata_cells.obs[celltype_label]==ct2]
-					lfc, p = _lfc_ttest(cells_in, cells_out)
+					lfc, p = _lfc_ttest(cells_in, cells_out, g)
 
 					if p > max_p:
 						de_genes.loc[g, ct] = (lfc, p)
@@ -109,7 +109,15 @@ if __name__ == "__main__":
 	adat = sc.read_h5ad(cells_file)
 	sc.pp.normalize_total(adat, target_sum=1000)  # scale all cells to have 1000 total UMIs
 
-	de_genes = de_genes_cells(adat, 'csplotch_annot', pool_others=False)
+	selected_profiles = [
+	    '6 Astrocyte - Slc7a10',
+	    '10 Microglia',
+	    '12 Oligodendrocyte Myelinating',
+	    '16 Alpha motor neurons'
+	]
+	adat4 = adat[adat.obs['sc_cluster'].isin(selected_profiles)]
+
+	de_genes = de_genes_cells(adat4, 'sc_cluster', pool_others=False, equal_var=False)
 
 	print(de_genes)
 
