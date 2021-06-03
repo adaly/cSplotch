@@ -40,20 +40,18 @@ def de_genes_cells(adata_cells, celltype_label, equal_var=True, pool_others=True
 		s1 = np.array(cells_in[:,g].X.todense()).squeeze()
 		s2 = np.array(cells_out[:,g].X.todense()).squeeze()
 
-		# Two-sample t-test between raw counts from each group
-		_,p = ttest_ind(s1, s2, equal_var=equal_var)
+		# Perform log-transform prior to significance testing -- Luecken & Theis (2019).
+		# Reduces skewness of data; better approximates normality assumed by Welch's t-test.
+		# Two-sample t-test between log-tranformed counts from each group
+		_,p = ttest_ind(np.log2(s1+1), np.log2(s2+1), equal_var=equal_var)
+
+		# Welch's t-test with unequal variances yields NaN when applied to two arrays of 0s.
+		if np.isnan(p):
+			p = 1.0
 
 		# LFC between the means of the two groups
 		s1m, s2m = s1.mean(), s2.mean()
-		if s2m == 0.:
-			if s1m == 0.:
-				lfc = 0
-			else:
-				lfc = np.inf
-		elif s1m == 0.:
-			lfc = -np.inf
-		else:
-			lfc = np.log2(s1m/s2m)
+		lfc = np.log2((s1m+1)/(s2m+1))
 
 		return lfc, p
 
