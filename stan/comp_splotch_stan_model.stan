@@ -242,6 +242,8 @@ model {
   }
 
   if (nb) {
+    phi ~ gamma(2,1); // inverse overdispersion (var = mu + mu^2/phi)
+    
     if (zi) {
     // zero-inflated negative binomial (ZINB) likelihood
       for (i in 1:sum_N_spots) {
@@ -254,7 +256,6 @@ model {
                       + neg_binomial_2_log_lpmf(counts[i]|log_lambda[i]+log_size_factors[i], phi_arr);
       }
     } else {
-      phi ~ gamma(2,1); // inverse overdispersion (var = mu + mu^2/phi)
       counts ~ neg_binomial_2_log(log_lambda+log_size_factors, phi_arr);
     }
   } 
