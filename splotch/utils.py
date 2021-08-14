@@ -19,6 +19,38 @@ import jax.numpy as np
 from jax import grad, jit
 from jax.experimental import optimizers
 
+
+def read_rdump(filename):
+  data_dict = {}
+  ndre = re.compile('.*structure\(c\((.*)\), .Dim=c\((.*)\)\)')
+
+  with open(filename, 'r') as f:
+    for line in f:
+      tokens = line.strip().split('<-')
+      key = tokens[0].strip()
+
+      # Single value
+      if len(tokens) == 2 and tokens[1] != '':
+        data_dict[key] = float(tokens[1])
+
+      else:
+        line = next(f).strip()
+
+        # 1D array
+        if line.startswith('c('):
+          tokens = line.strip('c()').split(',')
+          data_dict[key] = numpy.array([float(t) for t in tokens])
+
+        # ND array
+        else:
+          m = ndre.match(line)
+          flat_arr, shape = m.groups()
+          flat_arr = numpy.array([float(t) for t in flat_arr.split(',')])
+          shape = tuple([int(t) for t in shape.split(',')])
+          data_dict[key] = flat_arr.reshape(shape)
+
+  return data_dict
+
 def to_rdump(data,filename):
     with open(filename,'w') as f:
         for key in data:
