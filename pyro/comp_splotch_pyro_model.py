@@ -9,7 +9,6 @@ import torch.distributions.constraints as constraints
 import pyro
 import pyro.distributions as dist
 from pyro.infer import MCMC, NUTS
-from pyro.infer.mcmc.util import initialize_model
 
 from splotch.utils import read_rdump
 
@@ -140,33 +139,33 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 
 		bottom_level_beta = beta_level_3
 
-
 	### Spatial autocorrelation ###
 	alpha = pyro.sample('alpha', dist.Uniform(0,1))
 	tau = 1 / pyro.sample('tau_inv', dist.Gamma(1,1))
 
+	sparse_car_prior = SparseCARDist(tau, alpha, W_sparse, D_sparse, eig_values, W_n)
+	psi = pyro.sample('psi', sparse_car_prior)
 
 	### Spot-level variation ###
 	sigma = pyro.sample('sigma', dist.HalfNormal(0.3))
-	sparse_car_prior = SparseCARDist(tau, alpha, W_sparse, D_sparse, eig_values, W_n)
-	psi = pyro.sample('psi', sparse_car_prior)
+	epsilon = pyro.sample('epsilon', dist.MultivariateNormal(torch.zeros(len(counts), dtype=torch.double), sigma * torch.eye(len(counts), dtype=torch.double)))
 
 	### Likelihood calculation ###
 
 	# Calculate expression rate for each spot
 	log_lambda = torch.zeros(len(annotations))
+
 	for i in range(len(spots_per_tissue)):
 		for j in range(cumsum_spots[i], cumsum_spots[i+1]):
-			epsilon = pyro.sample('epsilon.%d' % j, dist.Normal(0,sigma))
-			log_lambda[j] = bottom_level_beta[tissue_mapping[i], annotations[j]] + psi[i] + epsilon
+			log_lambda[j] = bottom_level_beta[tissue_mapping[i], annotations[j]] + psi[j] + epsilon[j]
 
 	# Zero inflation component
 	theta = pyro.sample('theta', dist.Beta(1,2))
 
-	# Likelihood evaluation
-	for i in pyro.plate('data', len(counts)):
-		pyro.sample('obs.%d' % i, dist.ZeroInflatedPoisson(log_lambda[i].exp() * size_factors[i], gate=theta), obs=counts[i]) 
-
+	# Likelihood evaluation (vectorized)
+	expr_rate = log_lambda.exp() * size_factors
+	with pyro.plate('data'):
+		pyro.sample('obs', dist.ZeroInflatedPoisson(expr_rate, gate=theta), obs=counts)
 
 
 if __name__ == '__main__':
@@ -179,13 +178,15 @@ if __name__ == '__main__':
 		help='Number of samples to draw in posterior inference.')
 	parser.add_argument('-c', '--num-chains', required=False, type=int, default=4,
 		help='Number of chains to run in posterior inference.')
+	parser.add_argument('-p', '--progress-bar', required=False, action='store_true',
+		help='Display a progress bar in the console.')
 	args = parser.parse_args()
 
 
 	# Read in input data
 	data_dict = read_rdump(args.input_file)
 
-	count_arr = torch.tensor(data_dict['counts'].astype(int))
+	count_arr = torch.tensor(data_dict['counts'], dtype=int)
 	annot_arr = data_dict['D'].astype(int) - 1
 	depth_arr = torch.tensor(data_dict['size_factors'])
 
@@ -205,20 +206,27 @@ if __name__ == '__main__':
 	eig_values = torch.tensor(data_dict['eig_values'])
 	W_n = int(data_dict['W_n'])
 
-
 	# Clear parameter store before inference
 	pyro.clear_param_store()
+
+	# Logging options
+	if args.progress_bar:
+		log_fn = None
+	else:
+		def log_fn(kernel, samples, stage, i):
+			if i % 10 == 0:
+				print('\t%s [%d/%d] (%ds)' % (stage, i, args.num_samples, time.time()-start_time), flush=True)
 
 	# Set up NUTS kernel and MCMC sampler
 	kernel = pyro.infer.NUTS(splotch_model, max_tree_depth=7)
 	mcmc = pyro.infer.MCMC(kernel, 
 		num_samples=args.num_samples,
 		warmup_steps=args.num_samples,
-		num_chains=args.num_chains)
+		num_chains=args.num_chains,
+		disable_progbar = not args.progress_bar, hook_fn=log_fn)
 
 	# Perform sampling and check results
 	start_time = time.time()
-
 	mcmc.run(count_arr, depth_arr, annot_arr, spots_per_tissue, tissue_mapping, N_covariates,
 		W_sparse, D_sparse, eig_values, W_n,
 		N_level_1, N_level_2, N_level_3, level_2_mapping, level_3_mapping)
