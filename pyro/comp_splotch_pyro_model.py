@@ -215,7 +215,7 @@ if __name__ == '__main__':
 	else:
 		def log_fn(kernel, samples, stage, i):
 			if i % 10 == 0:
-				print('\t%s [%d/%d] (%ds)' % (stage, i, args.num_samples, time.time()-start_time), flush=True)
+				print('\t%s [%d/%d]' % (stage, i, args.num_samples), flush=True)
 
 	# Set up NUTS kernel and MCMC sampler
 	kernel = pyro.infer.NUTS(splotch_model, max_tree_depth=7)
