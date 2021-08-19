@@ -9,6 +9,8 @@ import torch.distributions.constraints as constraints
 import pyro
 import pyro.distributions as dist
 from pyro.infer import MCMC, NUTS
+from pyro.infer.mcmc.util import initialize_model
+from pyro.infer.autoguide.initialization import init_to_sample, init_to_mean
 
 from splotch.utils import read_rdump
 
@@ -65,8 +67,8 @@ class SparseCARDist(dist.TorchDistribution):
 		ldet_terms = 1 - (self.alpha * self.eig_values)
 
 		return 0.5 * (self.n_spots * torch.log(self.tau) 
-			          + torch.sum(ldet_terms) 
-			          - self.tau * (torch.dot(phit_D, phi) - self.alpha * torch.dot(phit_W, phi)))
+						  + torch.sum(ldet_terms) 
+						  - self.tau * (torch.dot(phit_D, phi) - self.alpha * torch.dot(phit_W, phi)))
 
 
 def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_mapping, N_covariates,
@@ -148,7 +150,7 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 
 	### Spot-level variation ###
 	sigma = pyro.sample('sigma', dist.HalfNormal(0.3))
-	epsilon = pyro.sample('epsilon', dist.MultivariateNormal(torch.zeros(len(counts), dtype=torch.double), sigma * torch.eye(len(counts), dtype=torch.double)))
+	epsilon = pyro.sample('epsilon', dist.Normal(torch.zeros(len(counts), dtype=torch.double), sigma))
 
 	### Likelihood calculation ###
 
@@ -218,7 +220,7 @@ if __name__ == '__main__':
 				print('\t%s [%d/%d]' % (stage, i, args.num_samples), flush=True)
 
 	# Set up NUTS kernel and MCMC sampler
-	kernel = pyro.infer.NUTS(splotch_model, max_tree_depth=7)
+	kernel = pyro.infer.NUTS(splotch_model, max_tree_depth=7, init_strategy=init_to_mean, use_multinomial_sampling=False)
 	mcmc = pyro.infer.MCMC(kernel, 
 		num_samples=args.num_samples,
 		warmup_steps=args.num_samples,
