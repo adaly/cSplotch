@@ -73,7 +73,8 @@ class SparseCARDist(dist.TorchDistribution):
 
 def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_mapping, N_covariates,
 	W_sparse, D_sparse, eig_values, W_n,
-	N_level_1=1, N_level_2=0, N_level_3=0, level_2_mapping=None, level_3_mapping=None):
+	N_level_1=1, N_level_2=0, N_level_3=0, level_2_mapping=None, level_3_mapping=None,
+	subsample_tissues=None):
 	'''
 	Parameters:
 	----------
@@ -100,6 +101,8 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 		maps each level 2 condition to index of a level 1 condition (e.g., genotype-sex to genotype)
 	level_3_mapping: (N_level_3,) array of int
 		maps each level 3 condition to index of a level 2 condition (e.g., individual to genotype-sex)
+	subsample_tissues: int or None
+		number of tissues to randomly subsample in likelihood calculation (or None to use all tissues)
 	'''
 
 	assert len(counts) == len(annotations), 'all spots must be annoated!'
@@ -142,6 +145,7 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 		bottom_level_beta = beta_level_3
 
 	### Spatial autocorrelation ###
+
 	alpha = pyro.sample('alpha', dist.Uniform(0,1))
 	tau = 1 / pyro.sample('tau_inv', dist.Gamma(1,1))
 
@@ -149,6 +153,7 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 	psi = pyro.sample('psi', sparse_car_prior)
 
 	### Spot-level variation ###
+
 	sigma = pyro.sample('sigma', dist.HalfNormal(0.3))
 	epsilon = pyro.sample('epsilon', dist.Normal(torch.zeros(len(counts), dtype=torch.double), sigma))
 
@@ -160,14 +165,28 @@ def splotch_model(counts, size_factors, annotations, spots_per_tissue, tissue_ma
 	for i in range(len(spots_per_tissue)):
 		for j in range(cumsum_spots[i], cumsum_spots[i+1]):
 			log_lambda[j] = bottom_level_beta[tissue_mapping[i], annotations[j]] + psi[j] + epsilon[j]
+	expr_rate = log_lambda.exp() * size_factors
 
 	# Zero inflation component
 	theta = pyro.sample('theta', dist.Beta(1,2))
 
-	# Likelihood evaluation (vectorized)
-	expr_rate = log_lambda.exp() * size_factors
-	with pyro.plate('data'):
-		pyro.sample('obs', dist.ZeroInflatedPoisson(expr_rate, gate=theta), obs=counts)
+	if subsample_tissues is not None:
+		tissue_inds = np.random.choice(len(spots_per_tissue), (subsample_tissues,), replace=False)
+		tissue_inds = np.sort(tissue_inds)
+		spot_inds = torch.cat([torch.arange(cumsum_spots[i], cumsum_spots[i+1]) for i in tissue_inds]).long()
+
+	# Use all spots in likelihood calculation:
+	if subsample_tissues is None:
+		with pyro.plate('data'):
+			pyro.sample('obs', dist.ZeroInflatedPoisson(expr_rate, gate=theta), obs=counts)
+	# Use only spots from subsample_tissues randomly selected tissues:
+	else:
+		tissue_inds = np.random.choice(len(spots_per_tissue), (subsample_tissues,), replace=False)
+		tissue_inds = np.sort(tissue_inds)
+		spot_inds = torch.cat([torch.arange(cumsum_spots[i], cumsum_spots[i+1]) for i in tissue_inds]).long()
+
+		with pyro.plate('data', len(counts), subsample=spot_inds):
+			pyro.sample('obs', dist.ZeroInflatedPoisson(expr_rate[spot_inds], gate=theta), obs=counts[spot_inds])
 
 
 if __name__ == '__main__':
@@ -182,6 +201,8 @@ if __name__ == '__main__':
 		help='Number of chains to run in posterior inference.')
 	parser.add_argument('-p', '--progress-bar', required=False, action='store_true',
 		help='Display a progress bar in the console.')
+	parser.add_argument('-s', '--subsample', required=False, type=int, default=None,
+		help='Number of tissues to subsample in likelihood calculation (when datasets are very large).')
 	args = parser.parse_args()
 
 
@@ -208,6 +229,7 @@ if __name__ == '__main__':
 	eig_values = torch.tensor(data_dict['eig_values'])
 	W_n = int(data_dict['W_n'])
 
+
 	# Clear parameter store before inference
 	pyro.clear_param_store()
 
@@ -227,11 +249,14 @@ if __name__ == '__main__':
 		num_chains=args.num_chains,
 		disable_progbar = not args.progress_bar, hook_fn=log_fn)
 
+
 	# Perform sampling and check results
 	start_time = time.time()
+
 	mcmc.run(count_arr, depth_arr, annot_arr, spots_per_tissue, tissue_mapping, N_covariates,
 		W_sparse, D_sparse, eig_values, W_n,
-		N_level_1, N_level_2, N_level_3, level_2_mapping, level_3_mapping)
+		N_level_1, N_level_2, N_level_3, level_2_mapping, level_3_mapping,
+		subsample_tissues=args.subsample)
 	run_time = time.time() - start_time
 
 	print('Inference ran for %.3f minutes' % (run_time / 60))
