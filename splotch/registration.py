@@ -65,7 +65,7 @@ def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep=
 	coords_reg = register_individuals(coords_reg, annotations, aar_names, align_aars=align_aars)
 
 	# Rotate consensus spot cloud
-	coords_reg = register_consensus(coords_reg, annotations, aar_names)
+	coords_reg = rotate_consensus(coords_reg, annotations, aar_names)
 
 	registration_map = {}
 	for idx in range(0,coords_reg.shape[1]):
@@ -79,7 +79,7 @@ def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep=
 
 # Plot a desired feature on coordinates obtained from overlay_tissues
 def plot_registered_feature(registration_map, data_files, feature_name, sep='\t', 
-                            vmin=None, vmax=None, alpha=0.9):
+							vmin=None, vmax=None, alpha=0.9):
 	'''
 	Parameters:
 	-----------
@@ -104,32 +104,32 @@ def plot_registered_feature(registration_map, data_files, feature_name, sep='\t'
 	-----------
 	fig, ax: pointers to matplotlib figure and axis objects.
 	'''
-    reg_coords, feat_vals = [],[]
-    
-    for c, df in enumerate(data_files):
-        if df in registration_map:
-            dat = pd.read_csv(df, sep=sep, index_col=0, header=0)
-            
-            for cstr in registration_map[df]:
-                if cstr in dat.columns:
-                    reg_coords.append(list(map(float, registration_map[df][cstr].split('_'))))
-                    feat_vals.append(dat.loc[feature_name, cstr])
-        
-    reg_coords = np.array(reg_coords)
-    feat_vals = np.array(feat_vals)
-    
-    if vmin is None:
-        vmin = feat_vals.min()
-    if vmax is None:
-        vmax = np.percentile(feat_vals, 95)
-    
-    fig, ax = plt.subplots(1, figsize=(8,8))
-    cbmap = ax.scatter(reg_coords[:,0], reg_coords[:,1], c=feat_vals, cmap='viridis', s=4, alpha=alpha,
-                      vmin=vmin, vmax=vmax)
-    cbar = plt.colorbar(cbmap)
-    cbar.set_label(feature_name)
-    
-    return fig, ax
+	reg_coords, feat_vals = [],[]
+	
+	for c, df in enumerate(data_files):
+		if df in registration_map:
+			dat = pd.read_csv(df, sep=sep, index_col=0, header=0)
+			
+			for cstr in registration_map[df]:
+				if cstr in dat.columns:
+					reg_coords.append(list(map(float, registration_map[df][cstr].split('_'))))
+					feat_vals.append(dat.loc[feature_name, cstr])
+		
+	reg_coords = np.array(reg_coords)
+	feat_vals = np.array(feat_vals)
+	
+	if vmin is None:
+		vmin = feat_vals.min()
+	if vmax is None:
+		vmax = np.percentile(feat_vals, 95)
+	
+	fig, ax = plt.subplots(1, figsize=(8,8))
+	cbmap = ax.scatter(reg_coords[:,0], reg_coords[:,1], c=feat_vals, cmap='viridis', s=4, alpha=alpha,
+					  vmin=vmin, vmax=vmax)
+	cbar = plt.colorbar(cbmap)
+	cbar.set_label(feature_name)
+	
+	return fig, ax
 
 
 # Takes in list of (centered) coordinates for each tissue, and outputs transformed coordinates
