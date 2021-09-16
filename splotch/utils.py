@@ -46,8 +46,12 @@ def read_rdump(filename):
           m = ndre.match(line)
           flat_arr, shape = m.groups()
           flat_arr = numpy.array([float(t) for t in flat_arr.split(',')])
-          shape = tuple([int(t) for t in shape.split(',')])
-          data_dict[key] = flat_arr.reshape(shape)
+          shape = [int(t) for t in shape.split(',')]
+          # Inversion of dimensions prior to reshaping necessary to recover intended rows, columns.
+          # must be due to differing conventions between R, Python.
+          shape.reverse()
+          shape = tuple(shape)
+          data_dict[key] = flat_arr.reshape(shape).T
 
   return data_dict
 
@@ -443,7 +447,11 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
     concat_E = []
     for tissue_idx in range(0,N_tissues):
       concat_E.append(cellcomp_matrix_list[tissue_idx].T)
-    data['E'] = np.vstack(concat_E)
+    data['E'] = numpy.vstack(concat_E)
+    # Ensure that there are no precision errors on the composition simplexes, as Stan is very picky
+    data['E'] = numpy.round(data['E'], 8)  # round to 8 decimals (precision of str(float))
+    data['E'][:,-1] = 1 - data['E'][:,:-1].sum(axis=1)
+
     data['N_celltypes'] = data['E'].shape[1]
 
   if car:
