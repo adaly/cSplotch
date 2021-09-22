@@ -20,6 +20,15 @@ from jax import grad, jit
 from jax.experimental import optimizers
 
 
+def to_numeric(num_str):
+  num_str = num_str.strip()
+  if num_str.startswith('-'):
+    return -to_numeric(num_str[1:])
+  if num_str.isdigit():
+    return int(num_str)
+  else:
+    return float(num_str)
+
 def read_rdump(filename):
   data_dict = {}
   ndre = re.compile('.*structure\(c\((.*)\), .Dim=c\((.*)\)\)')
@@ -31,7 +40,7 @@ def read_rdump(filename):
 
       # Single value
       if len(tokens) == 2 and tokens[1] != '':
-        data_dict[key] = float(tokens[1])
+        data_dict[key] = to_numeric(tokens[1])
 
       else:
         line = next(f).strip()
@@ -39,13 +48,13 @@ def read_rdump(filename):
         # 1D array
         if line.startswith('c('):
           tokens = line.strip('c()').split(',')
-          data_dict[key] = numpy.array([float(t) for t in tokens])
+          data_dict[key] = numpy.array([to_numeric(t) for t in tokens])
 
         # ND array
         else:
           m = ndre.match(line)
           flat_arr, shape = m.groups()
-          flat_arr = numpy.array([float(t) for t in flat_arr.split(',')])
+          flat_arr = numpy.array([to_numeric(t) for t in flat_arr.split(',')])
           shape = [int(t) for t in shape.split(',')]
           # Inversion of dimensions prior to reshaping necessary to recover intended rows, columns.
           # must be due to differing conventions between R, Python.
