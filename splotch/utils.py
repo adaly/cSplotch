@@ -468,9 +468,22 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
     W = block_diag(W_list,format='csr')
     data['W_sparse'] = generate_W_sparse(sum(N_spots_list),data['W_n'][0],W.toarray())
     data['D_sparse'] = W.sum(1).A1.astype(int)
-    data['eig_values'] = numpy.linalg.eigvalsh(diags(1.0/numpy.sqrt(data['D_sparse']),
-      0,format='csr').dot(W).dot(diags(1.0/numpy.sqrt(data['D_sparse']),
-      0,format='csr')).toarray())
+
+    # Computing the eigenvalues for all spots at once scales poorly; prohibitive for >80k spots
+    #data['eig_values'] = numpy.linalg.eigvalsh(diags(1.0/numpy.sqrt(data['D_sparse']),
+    #  0,format='csr').dot(W).dot(diags(1.0/numpy.sqrt(data['D_sparse']),
+    #  0,format='csr')).toarray())
+
+    # Instead, compute eigenvalues for each tissue separately, then concatenate & sort:
+    eigval_list = []
+    for W_tissue in W_list:
+      W = block_diag([W_tissue],format='csr')
+      D_sparse_tissue = W.sum(1).A1.astype(int)
+      D_v = diags(1.0/np.sqrt(D_sparse_tissue),0,format='csr')
+      evs = numpy.linalg.eigvalsh(D_v.dot(W).dot(D_v).toarray())
+      eigval_list.append(evs)
+    data['eig_values'] = numpy.sort(numpy.concatenate(eigval_list))
+
   else:
     data['W_n'] = []
     data['W_sparse'] = numpy.zeros((0,0))
