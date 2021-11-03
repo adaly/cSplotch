@@ -14,7 +14,7 @@ from utils_visium import detect_tissue_sections_hex
 
 # Accepts a set of annotated data files and transforms coordinates such that centroids of specified
 #   annotation categories overlap.
-def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep='\t', Visium=False):
+def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep_data='\t', sep_aar='\t', Visium=False):
 	'''
 	Parameters:
 	-----------
@@ -26,8 +26,10 @@ def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep=
 		Ordering of AARs must be consistent across all files.
 	max_iter: int
 		maximum number of iterations for registration procedure (register_individuals)
-	sep: char
-		delimiting character for data and AAR files
+	sep_data: char
+		delimiting character for data files.
+	sep_aar: char
+		delimiting character for aar files.
 	Visium: bool
 		whether coordinates are in Visium format (pseudo-hex) or not (Cartesian).
 		Important for connected component analysis used to separate individual tissues.
@@ -45,7 +47,8 @@ def overlay_tissues(data_files, aar_files, max_iter=10000, align_aars=None, sep=
 		str array containing names of annotation classes.
 	'''
 
-	tissue_dict, aar_names = get_tissue_sections(data_files, aar_files, Visium=Visium)
+	tissue_dict, aar_names = get_tissue_sections(data_files, aar_files, 
+		sep_data=sep_data, sep_aar=sep_aar, Visium=Visium)
 
 	coords_float, coords_str, annotations = [],[],[]
 	array_filenames = []
@@ -253,7 +256,7 @@ def rotate_consensus(coords, annot_inds, aar_names):
 # Return a dict mapping data files to a list of dicts (one for each tissue section on the array).
 # Each tissue dict contains ST coordinates + annotation for each spot in the tissue.
 def get_tissue_sections(data_files, aar_files, minimum_spot_val=None, 
-	max_spots_per_tissue=2000.0, Visium=False, sep='\t'):
+	max_spots_per_tissue=2000.0, Visium=False, sep_data='\t', sep_aar='\t'):
 	'''
 	Parameters:
 	-----------
@@ -272,8 +275,10 @@ def get_tissue_sections(data_files, aar_files, minimum_spot_val=None,
 	Visium: bool
 		whether coordinates are in Visium format (pseudo-hex) or not (Cartesian).
 		Important for connected component analysis used to separate individual tissues.
-	sep: char
-		delimiting character for data and AAR files
+	sep_data: char
+		delimiting character for data files.
+	sep_aar: char
+		delimiting character for aar files.
 	
 	Returns:
 	-----------
@@ -292,14 +297,14 @@ def get_tissue_sections(data_files, aar_files, minimum_spot_val=None,
 	for df, af in zip(data_files, aar_files): 
 
 		# Read the spot annotations
-		array_aar_matrix, array_aar_names = read_aar_matrix(af)
+		array_aar_matrix, array_aar_names = read_aar_matrix(af, sep=sep_aar)
 
 		if not np.array_equal(array_aar_names,aar_names):
 			logging.critical('Mismatch with AAR names! Order of the AARs must match!')
 			sys.exit(1)
 
 		# Read the spot features, preserving spot ordering from annotation file
-		dat = pd.read_csv(df, sep=sep, header=0, index_col=0)
+		dat = pd.read_csv(df, sep=sep_data, header=0, index_col=0)
 		in_features = np.array([s in dat.columns for s in array_aar_matrix.columns])
 		feature_matrix = dat[array_aar_matrix.columns[in_features]]
 
