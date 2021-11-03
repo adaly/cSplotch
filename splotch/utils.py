@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import sys
 import re
+import gzip
 import logging
 import numpy
 import pandas as pd
@@ -90,10 +91,48 @@ def to_stan_variables(variables,variables_of_interest):
                 output.append([variables.index(variable_of_interest_tmp) for variable_of_interest_tmp in variable_of_interest])
         return output
 
-def read_stan_csv(filename,variables):
-  data = pd.read_csv(filename,sep=',',index_col=False,comment='#',header=0,na_filter=False,usecols=lambda x: x.startswith(tuple(variables)))
+def read_stan_csv(filename,variables,efficient=False):
+  # Handle gzipped output, which is far more compact (and easier to store long-term)
+  if filename.endswith('.gz'):
+    open_fn = gzip.open
+  else:
+    open_fn = open
 
-  N_samples = data.shape[0]
+  # For small files, pandas is fine:
+  if not efficient:
+    data = pd.read_csv(open_fn(filename),sep=',',index_col=False,comment='#',header=0,na_filter=False,usecols=lambda x: x.startswith(tuple(variables)))
+    N_samples = data.shape[0]
+  
+  # For large files, (>4GB or so), use custom reading routine:
+  else:
+    # First count the number of MCMC samples in the file (cheaply):
+    with open_fn(filename, "r") as fh:
+      for i,line in enumerate(fh):
+        pass
+    N_samples=i # Number of samples excluding header line
+    
+    # Construct a (N_samples x N_variables) matrix, then convert to a pandas dataframe.
+    # N_variables are the number of variables in the Splotch posterior estimate that start with one of
+    #  the names provided in "variables" -- i.e., beta_level_1 yields all beta parameters at level 1.
+    with open_fn(filename, "r") as fh:
+      for i, line in enumerate(fh):
+        tokens = str(line).strip().split(",")
+        tokens = numpy.array(tokens)
+
+        if i==0:
+          keep_inds = numpy.zeros(len(tokens), dtype=bool)
+          for v in variables:
+            keep_inds += numpy.array([s.startswith(v) for s in tokens])
+          cols = tokens[keep_inds]      
+          data = numpy.zeros((N_samples, len(cols)))
+        else:
+          if len(tokens) == len(keep_inds):
+            data[i-1,:] = [float(f) for f in tokens[keep_inds]]
+          else:
+            print("SKIPPING Row %d (length not consistent)" % (i))
+            continue
+                
+    data = pd.DataFrame(data, columns=cols)
 
   # initialize a dictionary for storing the samples
   samples = {}
@@ -265,8 +304,8 @@ def print_summary(levels_list,coordinates_list):
     logging.info(summary_df.groupby(columns[0]).agg(
       {'Number of spots': ['size','sum']}))
 
-def read_aar_matrix(filename):
-  aar_matrix = pd.read_csv(filename,header=0,index_col=0,sep='\t')
+def read_aar_matrix(filename, sep='\t'):
+  aar_matrix = pd.read_csv(filename,header=0,index_col=0,sep=sep)
 
   aar_names = list(aar_matrix.index)
 
@@ -294,7 +333,7 @@ def read_cellcomp_matrix(cellcomp_file, array_coordinates_str=None):
   if array_coordinates_str is None:
       return comp_dat, list(comp_dat.index)
   else:
-      in_cellcomp = np.array([s in comp_dat.columns for s in array_coordinates_str], dtype=bool)
+      in_cellcomp = numpy.array([s in comp_dat.columns for s in array_coordinates_str], dtype=bool)
       
       comp_dat_filtered = comp_dat[array_coordinates_str[in_cellcomp]]
       
@@ -479,7 +518,7 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
     for W_tissue in W_list:
       W = block_diag([W_tissue],format='csr')
       D_sparse_tissue = W.sum(1).A1.astype(int)
-      D_v = diags(1.0/np.sqrt(D_sparse_tissue),0,format='csr')
+      D_v = diags(1.0/numpy.sqrt(D_sparse_tissue),0,format='csr')
       evs = numpy.linalg.eigvalsh(D_v.dot(W).dot(D_v).toarray())
       eigval_list.append(evs)
     data['eig_values'] = numpy.sort(numpy.concatenate(eigval_list))
