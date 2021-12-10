@@ -116,7 +116,9 @@ def read_stan_csv(filename,variables,efficient=False):
     #  the names provided in "variables" -- i.e., beta_level_1 yields all beta parameters at level 1.
     with open_fn(filename, "r") as fh:
       for i, line in enumerate(fh):
-        tokens = str(line).strip().split(",")
+        if isinstance(line, bytes):
+          line = line.decode('UTF-8')
+        tokens = line.strip().split(",")
         tokens = numpy.array(tokens)
 
         if i==0:
