@@ -454,6 +454,13 @@ def generate_column_labels(files_list,coordinates_list):
 
   return filenames_coordinates
 
+def scale_and_round(mat):
+  x = numpy.maximum(mat, 0)
+  x = x / x.sum(axis=1)[:,None]
+  x = numpy.around(x, decimals=8)
+  x[:,-1] = 1-numpy.sum(x[:,:-1], axis=1)
+  return x
+
 def generate_dictionary(N_spots_list,N_tissues,N_covariates,
                         N_levels,coordinates_list,
                         size_factors_list,aar_matrix_list, 
@@ -501,6 +508,7 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
     # Ensure that there are no precision errors on the composition simplexes, as Stan is very picky
     data['E'] = numpy.round(data['E'], 8)  # round to 8 decimals (precision of str(float))
     data['E'][:,-1] = 1 - data['E'][:,:-1].sum(axis=1)
+    data['E'] = scale_and_round(data['E'])
 
     data['N_celltypes'] = data['E'].shape[1]
 
