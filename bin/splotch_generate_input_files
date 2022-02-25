@@ -11,6 +11,7 @@ import pathlib
 
 import numpy
 import pandas as pd
+import scanpy as sc
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
@@ -25,13 +26,15 @@ from splotch.utils import get_variable_mappings, watershed_tissue_sections, \
 from splotch.utils_visium import unique_annots_loupe, read_annot_matrix_loupe, \
   detect_tissue_sections_hex, get_tissue_section_spots_hex, \
   get_spot_adjacency_matrix_hex
+from splotch.utils_sc import celltype_beta_priors
 
 def generate_splotch_inputs(count_files,metadata_file,
                             maximum_number_of_spots_per_tissue_section,
                             median_sequencing_depth,
                             n_levels,minimum_sequencing_depth,
                             output_directory,car,zi,nb,
-                            Visium=False,compositional=False):
+                            Visium=False,compositional=False,
+                            sc_adata=None,sc_group_key=None,sc_gene_symbols=None):
 
   # initialize a bunch of variables for keeping tissue section specific data
   aar_matrix_list = []
@@ -309,12 +312,22 @@ def generate_splotch_inputs(count_files,metadata_file,
                              W_list,W_n_list,car,zi,nb,
                              compositional,cellcomp_matrix_list)
 
+  if compositional:
+    if sc_adata is not None:
+      logging.info('Calculating empirical priors over Beta using provided single-cell data...')
+    df_beta_means, df_beta_stds = celltype_beta_priors(celltype_names,genes,
+      sc_adata=sc_adata,sc_group_key=sc_group_key,sc_gene_symbols=sc_gene_symbols,
+      target_depth=median_sequencing_depth)
+
   # write input data files for each gene separately
   logging.info('Saving the input data files (%s)'%(os.path.normpath('%s/'%(output_directory))))
   for gene_idx in range(0,len(genes)):
-    #logging.info('Writing the input data file for %s (%d/%d)'%(genes[gene_idx],gene_idx+1,len(genes)))
-    # counts are gene specific: replace the counts item 
+
     data['counts']  = get_counts(gene_idx,N_tissues,counts_list)
+
+    if compositional:
+      data['beta_prior_mean'] = df_beta_means.iloc[gene_idx].values
+      data['beta_prior_std'] = df_beta_stds.iloc[gene_idx].values
 
     if (gene_idx+1) % 1000 == 0:
       logging.info('%d/%d'%(gene_idx+1,len(genes)))
@@ -385,15 +398,17 @@ if __name__ == '__main__':
                       help='output in Visium format (default is standard ST)')
   parser.add_argument('-p','--compositional',action='store_true',dest='compositional',required=False,
                       help='Employ per-spot compositional labels to deconvolve contributions of individual cell types.')
+  parser.add_argument('-e','--empirical-priors',type=str,default=None,required=False,
+                      help='Use single-cell data to empirically determine hyperparameters of Beta priors.')
+  parser.add_argument('-g','--sc-group-key',type=str,default=None,required=False,
+                      help='Group key for cell type assignments in single-cell AnnData object (adata.obs).')
+  parser.add_argument('-G','--sc-gene-symbols',type=str,default=None,required=False,
+                      help='Gene symbols in single-cell AnnData object corresponding to names in ST count data.')
 
   parser.set_defaults(car=True)
   parser.set_defaults(zi=True)
   parser.set_defaults(nb=False)
   options = parser.parse_args()
-
-  print(options.count_files)
-  print(options.metadata_file)
-  print(options.Visium)
 
   # check that the supplied read count files exist
   for filename in options.count_files:
@@ -405,6 +420,22 @@ if __name__ == '__main__':
     logging.critical('Metadata file %s does not exist!'%(metadata_file))
     sys.exit(1)
 
+  # read single-cell AnnData file (if provided) and check for group key
+  if options.empirical_priors is not None:
+    sc_adata = sc.read_h5ad(options.empirical_priors)
+
+    if options.sc_group_key is None:
+      logging.critical('Missing sc_group_key for supplied AnnData object!')
+      sys.exit(1)
+    elif options.sc_group_key not in sc_adata.obs.columns:
+      logging.critical('Invalid sc_group_key for supplied AnnData object!')
+      sys.exit(1)
+    if options.sc_gene_symbols is not None and options.sc_gene_symbols not in sc_adata.var.columns:
+      logging.critical('Invalid sc_gene_symbols for supplied AnnData object!')
+      sys.exit(1)
+  else:
+    sc_adata = None
+
   # generate the data dictionaries 
   generate_splotch_inputs(options.count_files,options.metadata_file,
                           options.maximum_number_of_spots_per_tissue_section,
@@ -413,5 +444,6 @@ if __name__ == '__main__':
                           options.car,options.zi,
                           options.nb,
                           options.Visium,
-                          options.compositional)
+                          options.compositional,
+                          sc_adata, options.sc_group_key, options.sc_gene_symbols)
   sys.exit(0)

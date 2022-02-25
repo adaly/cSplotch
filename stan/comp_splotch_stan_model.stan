@@ -31,6 +31,9 @@ data {
   int<lower=0,upper=1> zi;  // whether to use zero inflation
   int<lower=0,upper=1> car;
 
+  row_vector[N_celltypes] beta_prior_mean;
+  row_vector[N_celltypes] beta_prior_std;
+
   // level 1 index of each level 2 variable  (this is used for indexing beta_level_1)
   int<lower=1> level_2_mapping[N_level_2]; 
   // level 2 index of each level 3 variable  (this is used for indexing beta_level_2)
@@ -121,7 +124,8 @@ transformed parameters {
   // derive level 1 coefficients from beta_raw
   for (i in 1:N_level_1) {
     for (j in 1:N_covariates) {
-      beta_level_1[i,j] = 2.0*beta_raw[i,j];
+      //beta_level_1[i,j] = 2.0*beta_raw[i,j];
+      beta_level_1[i,j] = beta_raw[i,j] .* beta_prior_std + beta_prior_mean;
     }
   }
 
