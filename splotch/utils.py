@@ -515,7 +515,7 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
   if car:
     data['W_n']  = [sum(W_n_list)]
     W = block_diag(W_list,format='csr')
-    data['W_sparse'] = generate_W_sparse(sum(N_spots_list),data['W_n'][0],W.toarray())
+    data['W_sparse'] = generate_W_sparse(sum(N_spots_list),data['W_n'][0],W)
     data['D_sparse'] = W.sum(1).A1.astype(int)
 
     # Computing the eigenvalues for all spots at once scales poorly; prohibitive for >80k spots
