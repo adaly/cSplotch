@@ -7,7 +7,7 @@ import logging
 import numpy
 import pandas as pd
 import scipy.stats
-from scipy.sparse import block_diag, diags
+from scipy.sparse import block_diag, diags, csr_matrix
 from scipy.sparse.linalg import eigsh
 from scipy.ndimage.measurements import label
 from scipy.ndimage.morphology import distance_transform_edt
@@ -434,16 +434,34 @@ def get_counts(gene_idx,N_tissues,counts_list):
 
   return concatenated_counts
 
+# Given an NxN dense representation of an upper-diagonal (adjacency matrix),
+# return a (W_n, 2) sparse representation for use with Stan (NOTE: 1-indexed)
 def generate_W_sparse(N,W_n,W):
-  counter = 0
-  W_sparse = numpy.zeros((W_n,2))
-  for i in range(0,N-1):
-    for j in range(i+1,N):
-      if W[i,j] == 1:
-        W_sparse[counter,0] = i+1
-        W_sparse[counter,1] = j+1
-        counter += 1
-  return W_sparse.astype(int)
+
+  # Tarmo's manual method: prohibitively slow for large datasets (>200k spots)
+  if N < 1000:
+    counter = 0
+    W_sparse = numpy.zeros((W_n,2))
+    for i in range(0,N-1):
+      for j in range(i+1,N):
+        if W[i,j] == 1:
+          W_sparse[counter,0] = i+1
+          W_sparse[counter,1] = j+1
+          counter += 1
+    return W_sparse.astype(int)
+
+  # Faster scipy-based method; should be used in nearly any situation
+  else:
+    spr, spc = csr_matrix(W).nonzero()
+    W_sparse = numpy.vstack((spr+1, spc+1)).T
+    # ensure that we only count each pair once!
+    W_sparse = numpy.array([x for x in W_sparse if x[0] < x[1]])
+
+    if not W_sparse.shape[0] == W_n:
+      logging.critical('Adjacency matrix W does not contain expected number of adjacent pairs W_n!')
+      sys.exit(1)
+
+    return W_sparse
 
 def generate_column_labels(files_list,coordinates_list):
   filenames = [[files_list[r]]*len(coordinates_list[r]) \
