@@ -12,7 +12,8 @@ Features
 - Different anatomical annotated regions are modelled using a linear model
 - Zero-inflated Poisson or Poisson likelihood for counts
 - Conditional autoregressive (CAR) prior for spatial random effect
-- COMING SOON: ability to deconvolve gene expression among set cell types with additional input of compositional data gathered from histology images
+- Ability to deconvolve gene expression into cell type-specific signatures using compositional data gathered from histology images
+- Use single-cell/single-nuclear expression data to calculate priors over expression in each cell type
 
 We support the original ST array design (1007 spots, a diameter of 100 μm, and a center-to-center distance of 200 μm) by [Spatial Transcriptomics AB](https://spatialtranscriptomics.com), as well as [Visium Spatial Gene Expression Solution](https://www.10xgenomics.com/spatial-transcriptomics/) by [10x Genomics, Inc.](https://www.10xgenomics.com), interfacing directly with file formats output by [Spaceranger and Loupe Browser](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/output/overview).
 
@@ -56,8 +57,9 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
                                     [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V/--Visium]
-                                    [-v]
+                                    [-V] [-v] 
+                                    [-p] 
+                                    [-e SINGLE_CELL_ANNDATA] [-g GROUP_KEY] [-G GENE_NAMES]
 splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
 $ splotch_stan_model
 Usage: splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
@@ -94,8 +96,9 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
                                     [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V/--Visium]
-                                    [-v]
+                                    [-V] [-v]
+                                    [-p] 
+                                    [-e SINGLE_CELL_ANNDATA] [-g GROUP_KEY] [-G GENE_NAMES]
 splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
 ```
 For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in the original ST format unless the ``-V/--Visium`` flag is passed. We will discuss the differences in input format in the subsequent sections.
@@ -140,13 +143,17 @@ The main steps of Splotch analysis are the following:
 1. [Preparation of count files](#preparation-of-count-files)
     - ``splotch_prepare_count_files``
 2. [Annotation of ST spots](#annotation-of-st-spots)
-    - [Span](https://github.com/tare/Span)
-3. [Preparation of metadata table](#preparation-of-metadata-table)
-4. [Preparation of input data files for Splotch](#preparation-of-input-data-for-splotch)
+    - [Original ST](#original-st-count-data)
+    - [Visium ST](#visium-st-count-data)
+3. [Annotation of cell types](#annotation-of-cell-types)
+4. [Preparation of metadata table](#preparation-of-metadata-table)
+    - [Original ST](#original-st-annotations)
+    - [Visium ST](#visium-st-annotations)
+5. [Preparation of input data files for Splotch](#preparation-of-input-data-for-splotch)
     - ``splotch_generate_input_files``
-5. [Splotch analysis](#splotch-analysis)
+6. [Splotch analysis](#splotch-analysis)
     - ``splotch``
-6. [Downstream analysis](#downstream-analysis)
+7. [Downstream analysis](#downstream-analysis)
 
 Below we will describe these steps in detail.
 
@@ -158,7 +165,7 @@ In the directory ``examples``, we have some example ST data [[3]](#references). 
 
 The inputs to the count file preparation script differ depending on whether the user is supplying data from original ST or Visium ST. Both cases are outlined below.
 
-#### Original ST
+#### Original ST count data
 
 The count files in the original ST workflow have the following tab-separated values (TSV) file format
 
@@ -193,7 +200,7 @@ optional arguments:
                         minimum detection rate (default is 0.02)
 ```
 
-#### Visium ST
+#### Visium ST count data
 
 When working with data from the Visium platform, count data are expected in the form of the output of [spaceranger count](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/using/count), which produces a structured directory containing count and metadata information for each sample.
 
@@ -234,7 +241,7 @@ INFO:root:The median sequencing depth across the ST spots is 2389
 ### Annotation of ST spots
 To get the most out of the statistical model of Splotch one has to annotate the ST spots based on their tissue context. These annotations will allow the model to share information across tissue sections, resulting in more robust conclusions.
 
-#### Original ST
+#### Original ST annotations
 
 To make the annotation step slightly less tedious in the original ST workflow, we have implemented a light-weight js tool called [Span](https://github.com/tare/Span).
 
@@ -256,7 +263,7 @@ The annotation files have the following TSV file format
 
 The rows and columns correspond to the user-define anatomical annotation regions (AAR) and ST spot coordinates, respectively. For instance, the spot 32.06_2.04 has the Vent_Horn annotation (i.e. located in ventral horn). The annotation category of each ST spot is **one-hot encoded** and we do not currently support more than one annotation category per ST spot.
 
-#### Visium ST
+#### Visium ST annotations
 
 10x Genomics have provided a tool for the exploration and annotation of Visium data called [Loupe](https://support.10xgenomics.com/spatial-gene-expression/software/visualization/latest/what-is-loupe-browser). 
 
@@ -278,6 +285,19 @@ ST spots without annotation categories are discarded by ``splotch_generate_input
 
 Annotation files for the count files in ``examples/Counts_Tables`` are located in ``examples/Annotations`` [3].
 
+### Annotation of cell types
+
+In order to deconvolve the characteristic expression estimates (beta) into cell-type associated signatures, the user must provide additional annotation information on the cellular composition of each spot. For a defined number of cell types $K$, this takes the form of a $K$-simplex describing the proportion of the spot (by area) covered by each cell type. In order to obtain these annotations, one may train a semantic segmentation model such as [Ilastik](https://www.ilastik.org/) to label cells based on morphological features extracted from their nuclei (see publication for details on our approach). 
+
+Cellular composition data for each ST array should take the form of a ($K$ rows x $N_{spots}$ columns) table, where all columns sum to 1:
+
+|           | 32.06_2.04 | 31.16_2.04 | 14.07_2.1 | ... | 28.16_33.01 |
+|-----------|------------|------------|-----------|-----|-------------|
+| CellType1 | 0.0        | 0.15       | 0.0       | ... | 0.25        |
+| CellType2 | 0.45       | 0.55       | 0.2       | ... | 0.25        |
+| CellType3 | 0.55       | 0.3        | 0.8       | ... | 0.5         |
+
+
 ### Preparation of metadata table
 The metadata table contains information about the samples (i.e. count files). Additionally, the metadata table is used for matching count and annotation files.
 
@@ -298,7 +318,11 @@ The metadata table has the following TSV file format
 
 Each sample (i.e. count file) has its own row in the metadata table. The columns ``Level 1``, ``Count file``, and  ``Annotation file`` are mandatory.  The column ``Level 2`` is mandatory when using the two-level model. Whereas, the columns ``Level 2`` and ``Level 3`` are mandatory when using the three-level model. The columns ``Level 1``, ``Level 2``, and ``Level 3`` define how the samples are analyzed using the linear multilevel model.
 
-Visium data **requires an additional column**, "Spaceranger output", that points to the spaceranger output directory associated with each sample.
+#### Visium metadata
+Visium data requires an **additional column, "Spaceranger output"**, that points to the spaceranger output directory associated with each sample.
+
+#### Compositional metatada
+Deconvolutional analysis requires an **additional column, "Composition file"**, that points to the [cell type composition file](#annotation-of-cell-types) associated with each sample.
 
 The user can include additional columns at their own discretion. For instance, we will use the column ``Image file`` in [Tutorial.ipynb](Tutorial.ipynb).
 
@@ -316,7 +340,8 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
                                     [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V] [-v]
+                                    [-V] [-v] [-p] [-e SINGLE_CELL_ANNDATA] 
+                                    [-g GROUP_KEY] [-G GENE_SYMBOLS]
 
 A script for generating input data for Splotch
   
@@ -343,6 +368,15 @@ optional arguments:
                       output_directory (default is data)
 -V, --Visium          data are from the Visium platform (default is false)
 -v, --version         show program's version number and exit
+-p, --compositional   deconvolve expression into cell-type specific signatures using 
+                      compositional annotations
+-e, --empirical_priors  
+                      use single-cell AnnData object (HDF5 format) to inform priors
+                      over gene expression in each cell type (--compositional only)
+-g, --sc-group-key    key in single-cell AnnData.obs containing cell type annotations 
+                      (--compositional only; must match cell type naming in annotation files)
+-G, --sc-gene-symbols key in single-cell AnnData.var corresponding to gene names in ST count data
+                      (--compositional only; must match gene names in count files)
 ```
 
 The input files are saved in subdirectories (i.e. 100 files per subdirectory to limit the number of files per directory) in the directory specified using ``-o OUTPUT_DIRECTORY``. There will be as many input files as there were genes in the prepared count files (please see [Preparation of count files](#preparation-of-count-files)). Moreover, the input file indices match with the line numbers of the prepared count files (header line is not taken into account); i.e. the data of the gene on the 4<sup>th</sup> row is saved in the file ``OUTPUT_DIRECTORY/0/data_3.R``.
