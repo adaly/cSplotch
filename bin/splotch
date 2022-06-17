@@ -7,12 +7,12 @@ error_exit()
 }
 
 usage() {
-  echo "usage: `basename $0` [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS" 1>&2
+  echo "usage: `basename $0` [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]" 1>&2
 }
 long_usage() {
   cat <<EOF
 usage: `basename $0` [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY
-               -b BINARY -n NUM_SAMPLES -c NUM_CHAINS
+               -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
 
 A wrapper for running Splotch
 
@@ -24,6 +24,7 @@ optional arguments:
   -b                    Splotch binary
   -n                    number of samples
   -c                    number of chains
+  -s                    store summary rather than full output
 EOF
 }
 
@@ -33,8 +34,9 @@ oflag=false
 bflag=false
 nflag=false
 cflag=false
+sflag=false
 
-while getopts ":g:d:o:b:n:c:h" options; do
+while getopts ":g:d:o:b:n:c:h:s" options; do
   case "${options}" in 
     h)
       long_usage
@@ -63,6 +65,9 @@ while getopts ":g:d:o:b:n:c:h" options; do
     c)
       NUM_CHAINS=${OPTARG}
       cflag=true
+      ;;
+    s)
+      sflag=true
       ;;
     :)
       usage
@@ -136,5 +141,13 @@ sed '/^[#l]/d' "$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_*.csv >> "$OUTPUT
 
 # remove individual csv output files
 rm -f "$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_*.csv || error_exit "Error: Deletion of individual sample files failed!"
+
+if $sflag
+then
+  # generate an HDF5-formatted summary of the HMC output, containing mean/std for all model variables plus full posteriors over betas
+  splotch_summarize_output -p "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv -o "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".hdf5 || error_exit "Error: Summarization of posterior failed!"
+  # remove full HMC output
+  rm -f "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv
+fi
 
 exit 0
