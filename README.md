@@ -41,7 +41,7 @@ First, the installation script downloads the latest version of [CmdStan](https:/
 As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, ``splotch_generate_input_files``, and ``splotch_stan_model``
 ```console
 $ splotch
-usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS
+usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
 splotch: error: argument -g is required
 $ splotch_prepare_count_files
 usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
@@ -79,7 +79,7 @@ $ pip install git+https://git@github.com/adaly/cSplotch.git
 As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, and ``splotch_generate_input_files``
 ```console
 $ splotch
-usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS
+usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
 splotch: error: argument -g is required
 $ splotch_prepare_count_files
 usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
@@ -390,18 +390,19 @@ The provided Bash script ``splotch`` is a wrapper for running Splotch
 ```console
 $ splotch -h
 usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY
-               -b BINARY -n NUM_SAMPLES -c NUM_CHAINS
+               -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
 
 A wrapper for running Splotch
 
 optional arguments:
--h                      show this help message and exit
--g                      gene index
--d                      data directory
--o                      output directory
--b                      Splotch binary
--n                      number of samples
--c                      number of chains
+-h     show this help message and exit
+-g     gene index
+-d     data directory
+-o     output directory
+-b     Splotch binary
+-n     number of samples
+-c     number of chains
+-s     store summary statistics instead of full posteriors for all variables besides betas (much more memory-efficient!)
 ```
 The wrapper will start separate processes for independent MCMC chains, and it will concatenate the samples from the HMC chains.
 
