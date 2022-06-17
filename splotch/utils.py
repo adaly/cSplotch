@@ -194,6 +194,12 @@ def summarize_stan_hdf5(post_file, out_file, variables=None):
         
     if key.startswith('beta'):
       h.create_dataset('%s/samples' % key, data=post[key])
+
+  # Create a separate category for lambda (exponentiated):
+  if 'log_lambda' in variables:
+    h.create_dataset('lambda/mean', data=numpy.exp(post['log_lambda']).mean(axis=0))
+    h.create_dataset('lambda/std', data=numpy.exp(post['log_lambda']).std(axis=0))
+
   h.close()
 
 def savagedickey(samples1,samples2,prior1_mean=0.0,prior1_std=2.0,prior2_mean=0.0,prior2_std=2.0):
