@@ -1,0 +1,15 @@
+	23_23	24_21	10_13	24_9	8_13	24_23	10_11	23_11	25_21	22_10	24_11	23_9	9_11	25_22	24_24	9_13	25_23	26_22	8_12	23_10	23_22	24_10	24_22	10_12
+crypt apex	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	1	1
+interna	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+muscle and submucosa	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+epithelium and muscle and submucosa	0	0	1	1	0	0	1	0	1	0	0	1	1	0	0	0	0	0	1	0	0	0	0	0
+epithelium	0	0	0	0	0	1	0	1	0	0	1	0	0	1	0	1	1	0	0	1	0	0	0	0
+crypt base and mid	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+peyer's patch	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+externa	1	0	0	0	1	0	0	0	0	1	0	0	0	0	1	0	0	0	0	0	1	0	0	0
+crypt mid	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+externa and interna	0	1	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	1	0	0	0	0	0	0
+epithelium and mucosae	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+interna and mucosae	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+epithelium and mucosae and submucosa	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
+crypt base	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
