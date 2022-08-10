@@ -5,6 +5,7 @@ import re
 import gzip
 import logging
 import numpy
+import h5py
 import pandas as pd
 import scipy.stats
 from scipy.sparse import block_diag, diags, csr_matrix
@@ -106,7 +107,9 @@ def read_stan_csv(filename,variables,efficient=False):
 
   # For small files, pandas is fine:
   if not efficient:
-    data = pd.read_csv(open_fn(filename),sep=',',index_col=False,comment='#',header=0,na_filter=False,usecols=lambda x: x.startswith(tuple(variables)))
+    data = pd.read_csv(open_fn(filename),sep=',',index_col=False,
+      comment='#',header=0,na_filter=False,
+      usecols=lambda x: x.startswith(tuple([v+'.' for v in variables])) or x in variables)
     N_samples = data.shape[0]
   
   # For large files, (>4GB or so), use custom reading routine:
@@ -130,7 +133,7 @@ def read_stan_csv(filename,variables,efficient=False):
         if i==0:
           keep_inds = numpy.zeros(len(tokens), dtype=bool)
           for v in variables:
-            keep_inds += numpy.array([s.startswith(v) for s in tokens])
+            keep_inds += numpy.array([(s.startswith(v+'.') or s==v) for s in tokens])
           cols = tokens[keep_inds]      
           data = numpy.zeros((N_samples, len(cols)))
         else:
@@ -171,6 +174,39 @@ def read_stan_csv(filename,variables,efficient=False):
       samples[variable][tuple([slice(0,N_samples)])+tuple(indices)] = data[col].values
 
   return samples
+
+# Accepts a path to a Stan-formatted CSV file containing outputs of Splotch run,
+# Generates an HDF5 file structured as:
+# /
+# * [var1]/
+#   * mean/
+#   * std/
+#   * samples/ (only for var == beta_level_[x])
+# * [var2]/ ...
+def summarize_stan_hdf5(post_file, out_file, variables=None):
+  # If variables not specified, summarize all relevant variables in file
+  if variables is None:
+    variables = ['log_lambda', 'beta_level_1', 'beta_level_2', 'beta_level_3', 'psi', 
+                 'sigma', 'sigma_level_2', 'sigma_level_3', 'theta', 'tau', 'a']
+    
+  post = read_stan_csv(post_file, variables, efficient=True)
+  post_means = dict([(key, post[key].mean(axis=0)) for key in post.keys()])
+  post_stds = dict([(key, post[key].std(axis=0)) for key in post.keys()])
+    
+  h = h5py.File(out_file, 'w')
+  for key in post.keys():
+    h.create_dataset('%s/mean' % key, data=post_means[key])
+    h.create_dataset('%s/std' % key, data=post_stds[key])
+        
+    if key.startswith('beta'):
+      h.create_dataset('%s/samples' % key, data=post[key])
+
+  # Create a separate category for lambda (exponentiated):
+  if 'log_lambda' in variables:
+    h.create_dataset('lambda/mean', data=numpy.exp(post['log_lambda']).mean(axis=0))
+    h.create_dataset('lambda/std', data=numpy.exp(post['log_lambda']).std(axis=0))
+
+  h.close()
 
 def savagedickey(samples1,samples2,prior1_mean=0.0,prior1_std=2.0,prior2_mean=0.0,prior2_std=2.0):
   Delta_theta = (numpy.array([samples1]).T - samples2).flatten()
