@@ -13,12 +13,18 @@ from scipy.ndimage.measurements import label
 from scipy.ndimage.morphology import distance_transform_edt
 from scipy.spatial import distance_matrix
 import sklearn.cluster
-from skimage.morphology import watershed
+try:
+  from skimage.segmentation import watershed  # skimage >=0.19
+except ImportError:
+  from skimage.morphology import watershed  # skimage <0.19
 from skimage.feature import peak_local_max
 
 import jax.numpy as np
 from jax import grad, jit
-from jax.experimental import optimizers
+try:
+  from jax.example_libraries import optimizers
+except ImportError:
+  from jax.experimental import optimizers
 
 
 def to_numeric(num_str):
