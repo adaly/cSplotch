@@ -156,7 +156,12 @@ def generate_splotch_inputs(count_files,metadata_file,
           sys.exit(1)
       else:
         spaceranger_dir = metadata[metadata['Count file'] == filename]['Spaceranger output'].values[0]
-        position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions_list.csv")
+        # Spaceranger >= 2.0
+        if os.path.exists(os.path.join(spaceranger_dir, "outs/spatial/tissue_positions.csv")):
+          position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions.csv")
+        # Spaceranger <= 1.9
+        else:
+          position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions_list.csv")
         array_aar_matrix = read_annot_matrix_loupe(annotation_filename, position_file, aar_names)
 
       # read spot compositions
