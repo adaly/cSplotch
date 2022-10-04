@@ -104,14 +104,14 @@ def celltype_beta_priors(st_cell_types, st_gene_list, sc_adata=None, sc_group_ke
 		if sc_group_key is None:
 			raise ValueError("Must specify sc_group_key to calculate priors from single-cell data.")
 
-		if use_raw and sc_adata.raw is None:
-			raise ValueError("Received `use_raw=True`, but `sc_adata.raw` is empty.")
-
 		if not use_raw and check_nonnegative_integers(sc_adata.X):
 			raise ValueError("Count data appears to not be log transformed!")
 
 		if use_raw:
-			sc_adata = sc_adata.raw.to_adata()
+			if sc_adata.raw is not None:
+				sc_adata = sc_adata.raw.to_adata()
+			else:
+				print('Warning: use_raw=True` but `sc_adata.raw` is empty -- treating adata.X as raw counts.')
 
 			if filter_genes_kws is not None:
 				sc.pp.filter_genes(sc_adata, **filter_genes_kws)

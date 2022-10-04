@@ -24,8 +24,13 @@ def unique_annots_loupe(loupe_files):
 # Annotataion matrix from Loupe annotation file
 def read_annot_matrix_loupe(loupe_file, position_file, unique_annots):
 	annots = pd.read_csv(loupe_file, header=0, sep=",")
-	positions = pd.read_csv(position_file, index_col=0, header=None,
-	  names=["in_tissue", "array_row", "array_col", "pixel_row", "pixel_col"])
+
+	# Spaceranger <=1.9 has no header row
+	if position_file.endswith('_list.csv'):
+		positions = pd.read_csv(position_file, index_col=0, header=None,
+		  names=["in_tissue", "array_row", "array_col", "pixel_row", "pixel_col"])
+	else:
+		positions = pd.read_csv(position_file, index_col=0, header=0)
 
 	annot_matrix = np.zeros((len(unique_annots), len(annots['Barcode'])), dtype=int)
 

@@ -517,8 +517,13 @@ def generate_column_labels(files_list,coordinates_list):
 def scale_and_round(mat):
   x = numpy.maximum(mat, 0)
   x = x / x.sum(axis=1)[:,None]
-  x = numpy.around(x, decimals=8)
-  x[:,-1] = 1-numpy.sum(x[:,:-1], axis=1)
+  x = numpy.around(x, decimals=5)
+  #x[:,-1] = 1-numpy.sum(x[:,:-1], axis=1)
+  for i in range(x.shape[0]):
+    ind_max = numpy.argmax(x[i,:])
+    ind_else = numpy.delete(numpy.arange(x.shape[1]), ind_max)
+    x[i, ind_max] = 1.0 - numpy.sum(x[i, ind_else])
+  assert x.min() >= 0.0
   return x
 
 def generate_dictionary(N_spots_list,N_tissues,N_covariates,
