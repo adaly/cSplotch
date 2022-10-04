@@ -40,6 +40,7 @@ def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate)
     barcodes_path = os.path.join(matrix_dir, "barcodes.tsv.gz")
     barcodes = [row[0] for row in csv.reader(gzip.open(barcodes_path, "rt"), delimiter="\t")]
 
+    # Read spot position file
     if os.path.exists(os.path.join(srd, "outs/spatial/tissue_positions.csv")):
       positions_path = os.path.join(srd, "outs/spatial/tissue_positions.csv")  # Spaceranger >=2.0
       positions = pd.read_csv(positions_path, index_col=0, header=0)
