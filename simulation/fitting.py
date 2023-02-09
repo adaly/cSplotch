@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from scipy import sparse
 
-import pystan
+import pystan  # Requires pystan 2.19.1.1 or earlier
 
 parser = argparse.ArgumentParser("Generate posteriors from simulated ST data to see if cSplotch can deconvolve cell type expression.")
 parser.add_argument(
@@ -44,7 +44,8 @@ counts_row = np.squeeze(counts[args.gene,:].toarray())
 splotch_in['counts'] = counts_row
 
 # Fit model using count data from specified gene, then save.
-fit = stan_model.sampling(data=splotch_in, iter=500, chains=4)
+#fit = stan_model.sampling(data=splotch_in, iter=500, chains=4)
+fit = stan_model.sampling(data=splotch_in, iter=250, chains=4)
 post = fit.extract(permuted=True)
 
 beta_level_1 = post['beta_level_1']

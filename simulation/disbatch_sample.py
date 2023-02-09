@@ -36,6 +36,9 @@ num_genes, num_spots = counts.shape
 if args.cells_file is not None:
 	adata = sc.read_h5ad(args.cells_file)
 
+	if adata.raw is not None:
+		adata = adata.raw.to_adata()
+
 	if not len(adata.var) == num_genes:
 		raise ValueError('Number of genes in simulated ST data and single-cell dataset do not match!')
 

@@ -38,7 +38,7 @@ def scatter_profiles(cluster_profiles, selected_profiles):
 
 
 # Scatter recovered profiles (mean exponentiated cSplotch Betas) against cluster profiles
-def scatter_recovery(recovery_dir, cluster_profiles, aar_profiles):
+def scatter_recovery(recovery_dir, cluster_profiles, aar_profiles, select_pairs=None):
     lambda_mu, lambda_sig, true_tpm = [],[], []
     aar_profiles = np.array(aar_profiles)
     
@@ -61,13 +61,12 @@ def scatter_recovery(recovery_dir, cluster_profiles, aar_profiles):
     lambda_sig = np.array(lambda_sig)
     true_tpm = np.array(true_tpm)
             
-    _, n_aar, n_ct = lambda_mu.shape
-    fig = plt.figure(figsize=(3*n_ct, 3*n_aar))
-    
-    for a in range(n_aar):
-        for i in range(n_ct):
-            ax = plt.subplot(n_aar, n_ct, a * n_ct + i + 1)
-            
+    if select_pairs is not None:
+        fig = plt.figure(figsize=(3*len(select_pairs), 3))
+
+        for k, (a,i) in enumerate(select_pairs):
+            ax = plt.subplot(1, len(select_pairs), k + 1)
+                
             x = true_tpm[:,a,i]
             y = lambda_mu[:,a,i] * 1e6 + 1
             err = lambda_sig[:,a,i] * 1e6 
@@ -85,14 +84,55 @@ def scatter_recovery(recovery_dir, cluster_profiles, aar_profiles):
             ax.set_yscale('log')
             ax.set_aspect('equal')
 
-            ax.set_xlabel('True log(TPM+1)', fontsize=8)
-            ax.set_ylabel('Predicted log(TPM+1)', fontsize=8)
+            ax.set_xlabel('True log(TPM+1)', fontsize=12)
+            ax.set_ylabel('Predicted log(TPM+1)', fontsize=12)
+
+            if i > 0 or a > 0:
+                ax.get_yaxis().set_visible(False)
+                ax.get_yaxis().set_ticks([])
             
             if aar_profiles.ndim == 1:
-                ax.set_title(aar_profiles[i], fontsize=10)
+                ax.set_title(aar_profiles[i], fontsize=12)
             else:
-                ax.set_title(aar_profiles[a,i], fontsize=10)
+                ax.set_title(aar_profiles[a,i], fontsize=12)
+    else:
+        _, n_aar, n_ct = lambda_mu.shape
+        fig = plt.figure(figsize=(3*n_ct, 3*n_aar))
+        
+        for a in range(n_aar):
+            for i in range(n_ct):
+                ax = plt.subplot(n_aar, n_ct, a * n_ct + i + 1)
+                
+                x = true_tpm[:,a,i]
+                y = lambda_mu[:,a,i] * 1e6 + 1
+                err = lambda_sig[:,a,i] * 1e6 
+
+                ax.axline([0, 0], [1, 1], c='r')        
+                ax.errorbar(x, y, yerr=err, fmt='o', markersize=1)
+
+                r, p = pearsonr(x, y)
+                ax.text(500, 1.5, 'r = %.3f' % r, fontsize=10)
+
+                ax.set_xlim(1,1e4)
+                ax.set_ylim(1,1e4)
+
+                ax.set_xscale('log')
+                ax.set_yscale('log')
+                ax.set_aspect('equal')
+
+                ax.set_xlabel('True log(TPM+1)', fontsize=12)
+                ax.set_ylabel('Predicted log(TPM+1)', fontsize=12)
+
+                if i > 0 or a > 0:
+                    ax.get_yaxis().set_visible(False)
+                    ax.get_yaxis().set_ticks([])
+                
+                if aar_profiles.ndim == 1:
+                    ax.set_title(aar_profiles[i], fontsize=12)
+                else:
+                    ax.set_title(aar_profiles[a,i], fontsize=12)
     plt.tight_layout()
+    plt.subplots_adjust(wspace=0.15)
     return fig
 
 
@@ -141,7 +181,7 @@ def scatter_against_splotch(csplotch_recovery_dir, splotch_recovery_dir, aar_pro
                     plot_row, plot_col = a*n_ct+i, -1
                     color = 'g'
                     
-                    ax[plot_row, plot_col].set_ylabel('Splotch log(TPM+1)', fontsize=8)
+                    ax[plot_row, plot_col].set_ylabel('Region-wide log(TPM+1)', fontsize=8)
             
                 ax[plot_row, plot_col].axis('on')
                 ax[plot_row, plot_col].axline([0, 0], [1, 1], c='r')

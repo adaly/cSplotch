@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import scipy.sparse as sp
 from anndata import AnnData
 
 def round_series_retain_integer_sum(xs):
@@ -228,7 +229,12 @@ def simspot_cells(adata_cells, celltype_label, ncells_in_spot=10, max_spot_depth
 				ncells_per_type[i] = n
 
 			s = in_type[np.random.choice(len(in_type), n, replace=False)]
-			cmat = np.array(s.X.todense())   # (cells, genes)
+			if sp.issparse(s.X):
+				cmat = np.array(s.X.todense())   # (cells, genes)
+			elif isinstance(s.X, pd.DataFrame):
+				cmat = s.X.values
+			else:
+				cmat = np.array(s.X)
 			cvec = np.rint(cmat.sum(axis=0)) # rounding after summation over cells minimizes deviation from desired total
 
 			selected_cells.append(cvec)
@@ -263,6 +269,8 @@ def simarray_cells(adata_cells, celltype_label, aar_kwargs, aar_freq=None, n_spo
 	----------
 	adata_cells: AnnData object
 		expression profiles from sn/scRNA-seq experiment, with n_obs=n_cells and n_var=n_genes
+	celltype_label: str
+		column of adata_cells.obs in which celltype labels are found
 	aar_kwargs: list of dict
 		keyword inputs to simspot_cell for each AAR
 	aar_freq: (n_aars,) ndarray of dtype float
