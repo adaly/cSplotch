@@ -8,8 +8,8 @@ import jax.numpy as jnp
 from jax import grad, jit
 from jax.experimental import optimizers
 
-from utils import read_array, read_aar_matrix, detect_tissue_sections, get_tissue_section_spots, filter_arrays
-from utils_visium import detect_tissue_sections_hex
+from splotch.utils import read_array, read_aar_matrix, detect_tissue_sections, get_tissue_section_spots, filter_arrays
+from splotch.utils_visium import detect_tissue_sections_hex
 
 
 # Accepts a set of annotated data files and transforms coordinates such that centroids of specified
