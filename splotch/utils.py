@@ -56,7 +56,7 @@ def read_rdump(filename):
         # 1D array
         if line.startswith('c('):
           tokens = line.strip('c()').split(',')
-          data_dict[key] = numpy.array([to_numeric(t) for t in tokens])
+          data_dict[key] = numpy.array([to_numeric(t) for t in tokens if len(t)>0])
 
         # ND array
         else:
