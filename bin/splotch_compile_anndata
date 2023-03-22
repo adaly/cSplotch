@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+
+import os
+import glob
+import h5py
+import pickle
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import anndata as ad
+
+from pathlib import Path
+from anndata import AnnData
+from argparse import ArgumentParser
+from splotch.utils import read_rdump
+
+## TODO: Support for classic Splotch outputs (slow!!)
+## TODO: Include beta means/SDs in adata.uns?
+
+parser = ArgumentParser()
+parser.add_argument('-m', '--meta-file', type=str, required=True,
+	help='Path to Splotch Metadata file.')
+parser.add_argument('-i', '--input-dir', type=str, required=True, 
+	help='Path to Splotch input directory.')
+parser.add_argument('-o', '--output-dir', type=str, required=True,
+	help='Path to Splotch output directory (HDF5-formatted summary files).')
+parser.add_argument('-d', '--dest-file', type=str, required=True,
+	help='Path to save HDF5-formatted AnnData object with lambdas.')
+args = parser.parse_args()
+
+sinfo = pickle.load(open(os.path.join(args.input_dir, 'information.p'), 'rb'))
+
+# Read in mean lambdas from HDF5 summary files of Splotch posteriors
+gene_lambdas = np.zeros((len(sinfo['genes']), len(sinfo['filenames_and_coordinates'])), dtype=float)
+gene_counts = np.zeros_like(gene_lambdas, dtype=np.int32)
+
+for pfile in glob.glob(os.path.join(args.output_dir, '*', 'combined_*.hdf5')):
+	gid = int(Path(pfile).stem.split('_')[1])
+	with h5py.File(pfile, 'r') as hf:
+		if np.isnan(hf['lambda']['mean'][:]).any():
+			print('WARNING: non-numeric values detected in lambda means for gene %d (SKIPPING)' % gid)
+			continue
+		gene_lambdas[gid-1, :] = hf['lambda']['mean'][:]
+
+	dat = read_rdump(os.path.join(args.input_dir, str(gid//100), 'data_%d.R' % gid))
+	gene_counts[gid-1, :] = dat['counts']
+
+# Obtain AARs for all spots
+dat = read_rdump(glob.glob(os.path.join(args.input_dir, '*', 'data_*.R'))[0])
+annot_array = np.array([sinfo['annotation_mapping'][a-1] for a in dat['D']])
+
+print(gene_lambdas.shape, flush=True)
+
+# Compile AnnData object
+meta = pd.read_csv(args.meta_file, sep='\t', header=0, index_col=0)
+meta.index = meta['Count file']
+
+coords = np.array(['_'.join(s) for s in sinfo['filenames_and_coordinates']])
+l1 = np.array([meta.loc[s[0], 'Level 1'] for s in sinfo['filenames_and_coordinates']])
+obs = pd.DataFrame({'Level 1': l1, 'region': annot_array}, index=coords)
+if sinfo['n_levels'] >= 2:
+	l2 = np.array([meta.loc[s[0], 'Level 2'] for s in sinfo['filenames_and_coordinates']])
+	obs['Level 2'] = l2
+if sinfo['n_levels'] == 3:
+	l3 = np.array([meta.loc[s[0], 'Level 3'] for s in sinfo['filenames_and_coordinates']])
+	obs['Level 3'] = l3
+
+adata = AnnData(X=gene_lambdas.T, obs=obs, var=pd.DataFrame(index=sinfo['genes']),
+	layers={'X_raw':gene_counts.T}, dtype=np.float32)
+print(adata, flush=True)
+
+adata.write(args.dest_file)

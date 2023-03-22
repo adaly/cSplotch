@@ -119,7 +119,7 @@ setup(name='cSplotch',
           'Programming Language :: Python :: 3'],
       packages=['splotch'],
       scripts=['bin/splotch_prepare_count_files','bin/splotch_generate_input_files','bin/splotch',
-          'bin/splotch_summarize_output'],
+          'bin/splotch_summarize_output', 'bin/splotch_compile_anndata'],
       # could not pass binaries through the scripts argument
       data_files=[('bin',stan_files)],
       install_requires=install_requires,
