@@ -1,0 +1,7 @@
+Gene name	DAVID_functional annotation cluster	Functional Annotation	Broad functional annotation
+Rpl29	1 and 2	Ribosome and protein translation	Ribosome and protein translation
+Rpl34	1 and 2	Ribosome and protein translation	Ribosome and protein translation
+Rpl4	1 and 2	Ribosome and protein translation	Ribosome and protein translation
+Rpl8	1 and 2	Ribosome and protein translation	Ribosome and protein translation
+Stab1	N/A	Potential scavenger receptor	
+Pparg	N/A	TFs involved in metatabolic regulation	

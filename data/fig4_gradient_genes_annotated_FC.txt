@@ -1,0 +1,101 @@
+Gene name	DAVID_functional annotation cluster	Functional Annotation	Broad functional annotation
+Eef1a1	5	translation elongation factor	Ribosome and protein translation
+Eef1e1	5	translation elongation factor	Ribosome and protein translation
+Fance	N/A	DNA repair	DNA repair
+Reln	6 and 11	Extracellular matrix	Extracellular matrix
+Rpl32	2	Ribosome and protein translation	Ribosome and protein translation
+Rps19	2	Ribosome and protein translation	Ribosome and protein translation
+Rps20	2	Ribosome and protein translation	Ribosome and protein translation
+Rps25	2	Ribosome and protein translation	Ribosome and protein translation
+Xrcc5	N/A	DNA repair	DNA repair
+Top1	9	DNA replication	DNA replication
+Eef1g	5	translation elongation factor	
+Fgfr2	N/A	signaling	
+Msh2	N/A	DNA repair	DNA repair
+Rps3	2	Ribosome and protein translation	Ribosome and protein translation
+Rps9	2	Ribosome and protein translation	Ribosome and protein translation
+Mcm2	9	DNA replication	DNA replication
+Rpl7	2	Ribosome and protein translation	Ribosome and protein translation
+Suv39h1	N/A	epigenetic gene silencing	
+Mcm4	9	DNA replication	DNA replication
+Rpl11	2	Ribosome and protein translation	Ribosome and protein translation
+Set	N/A	epigenetic gene silencing	
+Eef1d	5	translation elongation factor	Ribosome and protein translation
+Rpl26	2	Ribosome and protein translation	Ribosome and protein translation
+Smo	N/A	signaling	
+Rps21	2	Ribosome and protein translation	Ribosome and protein translation
+Rps10	2	Ribosome and protein translation	Ribosome and protein translation
+Rps24	2	Ribosome and protein translation	Ribosome and protein translation
+Ezr	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Ifngr1	N/A	Immune signaling	
+Gpa33	N/A	colonic cell surface antigen	
+Krt8	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Fuca2	N/A	Metabolism	
+Ceacam1	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Clcn2	8	Ion transport	Ion transport
+Rplp0	2	Ribosome and protein translation	Ribosome and protein translation
+Eif4b	5	translation elongation factor	Ribosome and protein translation
+Eif5b	5	translation elongation factor	Ribosome and protein translation
+Aspn	6 and 11	Extracellular matrix	Extracellular matrix
+Dcn	6 and 11	Extracellular matrix	Extracellular matrix
+Lum	6 and 11	Extracellular matrix	Extracellular matrix
+Hspg2	6 and 11	Extracellular matrix	Extracellular matrix
+Celf1	7 and 8	RNA binding and processing	RNA binding and processing
+Ecm2	6 and 11	Extracellular matrix	Extracellular matrix
+Fbln1	6 and 11	Extracellular matrix	Extracellular matrix
+Ltbp3	6 and 11	Extracellular matrix	Extracellular matrix
+Mmp17	6 and 11	Extracellular matrix	Extracellular matrix
+Tnxb	6 and 11	Extracellular matrix	Extracellular matrix
+Lsm2	7 and 8	RNA binding and processing	RNA binding and processing
+Lsm4	7 and 8	RNA binding and processing	RNA binding and processing
+Luc7l3	7 and 8	RNA binding and processing	RNA binding and processing
+Rbm38	7 and 8	RNA binding and processing	RNA binding and processing
+Cpsf4	7 and 8	RNA binding and processing	RNA binding and processing
+C1qbp	7 and 8	RNA binding and processing	RNA binding and processing
+Pabpc1	7 and 8	RNA binding and processing	RNA binding and processing
+Prpf6	7 and 8	RNA binding and processing	RNA binding and processing
+Rp9	7 and 8	RNA binding and processing	RNA binding and processing
+Srrm1	7 and 8	RNA binding and processing	RNA binding and processing
+Sf3b2	7 and 8	RNA binding and processing	RNA binding and processing
+Sf3b5	7 and 8	RNA binding and processing	RNA binding and processing
+Exosc2	7 and 8	RNA binding and processing	RNA binding and processing
+Exosc5	7 and 8	RNA binding and processing	RNA binding and processing
+Nol9	7 and 8	RNA binding and processing	RNA binding and processing
+C1d	7 and 8	RNA binding and processing	RNA binding and processing
+Gins1	9	DNA replication	DNA replication
+Nasp	9	DNA replication	DNA replication
+Rfc3	9	DNA replication	DNA replication
+Lrwd1	9	DNA replication	DNA replication
+Fbxo25	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Iqgap2	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Micall2	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Myo15b	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Myl12b	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Phactr2	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Pls1	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Plec	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Scin	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Naip1	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Anxa2	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Cdhr5	1 to 5	Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Heph	8	Ion transport	Ion transport
+Atp1a1	8	Ion transport	Ion transport
+Atp1b1	8	Ion transport	Ion transport
+Ctns	8	Ion transport	Ion transport
+Osbpl2	8	Ion transport	Ion transport
+Slc10a3	8	Ion transport	Ion transport
+Slc2a1	8	Ion transport	Ion transport
+Slc25a20	8	Ion transport	Ion transport
+Slc6a8	8	Ion transport	Ion transport
+Slc9a3r1	8	Ion transport	Ion transport
+Vps4b	8	Ion transport	Ion transport
+Gtpbp2	6	Protein kinase	
+Gak	6	Protein kinase	
+Etnk1	6	Protein kinase	
+Frk	6	Protein kinase	
+Ipmk	6	Protein kinase	
+Mapk13	6	Protein kinase	
+Pfkp	6	Protein kinase	
+Plk3	6	Protein kinase	
+Prkcd	6	Protein kinase	
+Sgk1	6	Protein kinase	

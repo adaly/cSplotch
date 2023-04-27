@@ -1,0 +1,4 @@
+Gene name	DAVID_functional annotation cluster	Functional Annotation	Broad functional annotation
+Slc13a2	N/A	Ion transport	Ion transport
+Cldn23		Cell polarity and cytoskeleton	Cell polarity and cytoskeleton
+Plin4		Metabolism	

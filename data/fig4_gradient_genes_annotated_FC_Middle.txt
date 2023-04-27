@@ -1,0 +1,15 @@
+Gene name	DAVID_functional annotation cluster	Functional Annotation	Broad functional annotation
+Cyp2c55	1	Oxireductase activity	Oxireductase activity
+Cyp2d34	1	Oxireductase activity	Oxireductase activity
+Fth1	1	Oxireductase activity	Oxireductase activity
+Hsd17b2	1	Oxireductase activity	Oxireductase activity
+Maoa	1	Oxireductase activity	Oxireductase activity
+Rdh16	1	Oxireductase activity	Oxireductase activity
+Hbgef	N/A	Signaling	
+Ppy	N/A	Signaling	
+Ggh	N/A	Metabolism	
+Gpt	N/A	Metabolism	
+Pkm	N/A	Metabolism	
+Il33	N/A	Signaling	
+Grem1	N/A	Signaling	
+Ecm1	N/A	Extracellular matrix	Extracellular matrix
