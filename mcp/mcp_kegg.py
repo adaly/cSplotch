@@ -10,16 +10,17 @@ import scanpy as sc
 from pathlib import Path
 from argparse import ArgumentParser
 from mcp_analysis import single_cell_corr, multi_cell_corr
+from matplotlib import pyplot as plt
 
 
 ##### Files for KEGG analysis #####
 
-KEGG_DIR = 'kegg_files/'
+KEGG_DIR = '/Users/adaly/Dropbox (Simons Foundation)/cell_segmentation_colon/kegg_files/'
 GENE_IDS = os.path.join(KEGG_DIR, 'gene_ids.txt')
 KEGG_IDS = os.path.join(KEGG_DIR, 'kegg_ids.txt')
 KEGG_DATABASE = os.path.join(KEGG_DIR, 'kegg_database.txt')
 
-ENS_TO_COMMON = os.path.join(KEGG_DIR, 'Gene_names_mm.txt')
+ENS_TO_COMMON = '/Users/adaly/Documents/mouse_colon/Gene_names_mm.txt'
 
 ###################################
 
@@ -51,9 +52,11 @@ def mcp_kegg_genes(all_cell_tpm, all_cell_mcp, n_genes=100, min_abs_corr=0.5):
 	return df_kegg
 
 # Find top genes by magnitude of weight contributing to MCP
-def mcp_kegg_genes_bywt(all_cell_wts, n_genes=100, min_abs_wt=0, maxk=None):
+def mcp_kegg_genes_bywt(all_cell_wts, n_genes=100, min_abs_wt=0, maxk=None, 
+	across_celltypes=False):
 	df_kegg = pd.DataFrame(columns=['gene', 'MCP', 'celltype'])
 
+	# Find the top n_genes per cell type by pos/neg contribution
 	for ct in all_cell_wts.keys():
 		wts = all_cell_wts[ct]
 
@@ -65,7 +68,7 @@ def mcp_kegg_genes_bywt(all_cell_wts, n_genes=100, min_abs_wt=0, maxk=None):
 		for m in mcp_list:
 			# Top n_genes most positively correlated genes
 			wts_decr = wts[m].sort_values(ascending=False)
-			wts_decr = wts_decr[wts_decr > 0]
+			wts_decr = wts_decr[wts_decr > min_abs_wt]
 			genes_pos = wts_decr.index.values
 			if len(genes_pos) > 0:
 				df = pd.DataFrame({
@@ -78,7 +81,7 @@ def mcp_kegg_genes_bywt(all_cell_wts, n_genes=100, min_abs_wt=0, maxk=None):
 
 			# Top n_genes most negatively correlated genes
 			wts_incr = wts[m].sort_values(ascending=True)
-			wts_incr = wts_incr[-wts_incr > 0]
+			wts_incr = wts_incr[-wts_incr > min_abs_wt]
 			genes_neg = wts_incr.index.values
 			if len(genes_neg) > 0:
 				df = pd.DataFrame({
@@ -89,8 +92,19 @@ def mcp_kegg_genes_bywt(all_cell_wts, n_genes=100, min_abs_wt=0, maxk=None):
 					})
 				df_kegg = pd.concat((df_kegg, df))
 
-	return df_kegg
+	# If desired, pare down to top n_genes across cell types
+	if across_celltypes:
+		df_list = []
+		for m in df_kegg['MCP'].unique():
+			dfm = df_kegg[df_kegg['MCP'] == m]
+			
+			if m.endswith('up'):
+				df_list.append(dfm.sort_values('wt', ascending=False)[:n_genes])
+			else:
+				df_list.append(dfm.sort_values('wt')[:n_genes])
+		df_kegg = pd.concat(df_list)
 
+	return df_kegg
 
 def kegg_analysis(genes_of_interest):
 	'''
@@ -188,6 +202,68 @@ def kegg_analysis(genes_of_interest):
 
 	return df_kegg[df_kegg['pval'] <= max_pval]
 
+
+###### PLOTTING FUNCTIONS ######
+
+# Render KEGG associations of given MCPs (exported from cirro)
+def kegg_scores_dotplot(df, df_size):
+	# fill with zeros
+	df = df.fillna(0).T
+	df_size = df_size.fillna(0).T
+	
+	# Cut size array to 6 distinct values 
+	df_size_cut = pd.cut(df_size.values.flatten() / max(df_size.values.flatten()), 6, 
+						 include_lowest = False, labels = [0,0.2,0.4,0.6,0.8, 1.0])
+	df_size_cut = pd.DataFrame(zip(*[iter(df_size_cut)]*len(df_size.columns)))
+	labels_axis = np.array([0.2,0.4,0.6,0.8, 1.0]) * df_size.values.max()
+	
+	df_size_cut.columns = df.columns
+	df_size_cut.index = df.index
+	
+	
+	# define order
+	cat_order = df_size_cut.index
+
+	obs = pd.DataFrame(df.index, index = df.index, columns = ['KEGG pathway']).astype("category")
+	mod_anndata = sc.AnnData(df, obs, dtype=np.float32)
+
+	# plots
+	vmin = 0
+	vmax = 0.3
+	cmap = 'Reds'
+
+	plt.rcParams['font.size'] = 10
+	size_title = '-log10(padj)'
+	
+	sc.pl.dotplot.DEFAULT_LEGENDS_WIDTH = 3.5
+	
+	ax_dict = sc.pl.dotplot(mod_anndata, show=False, var_names = mod_anndata.var_names, dot_size_df = df_size_cut, 
+							dot_color_df = df, categories_order = cat_order, size_title = size_title, 
+							colorbar_title = 'Overlap',
+							groupby = 'KEGG pathway', vmin = vmin, vmax = vmax, cmap=cmap, 
+							figsize = (3*len(mod_anndata.obs.columns)+4, 2.5*len(mod_anndata.obs.index)+2),
+							swap_axes=True)
+	
+	ax_dict['mainplot_ax'].set_yticklabels([i for i in mod_anndata.var_names]) 
+	ax_dict['mainplot_ax'].tick_params(axis='y', labelleft=True, left=True, labelsize = 8, 
+									   labelrotation = 0, pad = 0)   
+	ax_dict['mainplot_ax'].tick_params(axis='x', labelbottom=True, bottom=True,labelsize = 8, 
+									   labelrotation = 90, pad = 0) 
+	ax_dict['mainplot_ax'].grid(visible=True, which='major', axis='both')
+	ax_dict['size_legend_ax'].set_facecolor('white')
+	ax_dict['size_legend_ax'].set_aspect(0.6)
+	ax_dict['size_legend_ax'].set_xticklabels(['%.2g' % x for x in labels_axis], fontsize=8)
+	ax_dict['color_legend_ax'].set_aspect(0.2)
+	fig = ax_dict['mainplot_ax'].get_figure()
+	
+	plt.subplots_adjust(left=0.5, right=1.0, bottom=0.35, top=1.0, wspace=0.2)
+	#plt.tight_layout()
+	
+	return fig, ax_dict
+
+
+###### CIRRO FUNCTIONS ######
+
 def create_kegg_recarray(kegg_paths_per_mcp):
 	compiled_metrics = {}
 
@@ -247,7 +323,6 @@ if __name__ == '__main__':
 		mcp, tpm, wts = {}, {}, {}
 
 		region = Path(rdir).stem
-		print(region)
 
 		for mcp_file in glob.glob(os.path.join(rdir, 'mcp_*.csv')):
 			tpm_file = Path(mcp_file).parent / Path(mcp_file).name.replace('mcp', 'tpm')
@@ -262,10 +337,10 @@ if __name__ == '__main__':
 			wts[ct] = pd.read_csv(wts_file, header=0, index_col=0)  # (genes x MCPs)
 
 		#df_kegg = mcp_kegg_genes(tpm, mcp, n_genes=250)
-		df_kegg = mcp_kegg_genes_bywt(wts, n_genes=250, maxk=maxk)
+		df_kegg = mcp_kegg_genes_bywt(wts, n_genes=250, min_abs_wt=0.1, across_celltypes=True, maxk=maxk)
+		print(region, len(df_kegg))
 		df_kegg = df_kegg.join(df_map, how='left', on='gene')
 
-		print(df_kegg)
 
 		for mcp in df_kegg['MCP'].unique():
 			genes_in = np.unique(df_kegg['common'][df_kegg['MCP']==mcp].values)
@@ -274,11 +349,7 @@ if __name__ == '__main__':
 			if len(df_kegg_path) > 0:
 				kegg_paths_per_mcp['%s %s' % (region, mcp)] = df_kegg_path
 
-	print(kegg_paths_per_mcp.keys())
-	#fh = open('kegg_paths_per_mcp.dat', 'wb')
-	#pickle.dump(kegg_paths_per_mcp, fh)
-
-
+	# Save to AnnData for rendering in cirro
 	if args.adata_file is not None:
 		adata = sc.read_h5ad(args.adata_file)
 
@@ -300,3 +371,41 @@ if __name__ == '__main__':
 		}
 		
 		adata.write(args.adata_file)
+
+	# Create dotplot visualization directly
+	else:
+		df_sig_combined, df_over_combined = None, None
+		for m in kegg_paths_per_mcp.keys():
+			df_kegg = kegg_paths_per_mcp[m]
+			df_kegg = df_kegg[df_kegg['p_adj'] < 0.05]
+
+			if len(df_kegg) == 0:
+				print('No significant associations for', m)
+				continue
+
+			df_sig = pd.DataFrame({m: df_kegg['p_adj'].values}, index=df_kegg['pathway'].values)
+			df_over = pd.DataFrame({m: df_kegg['overlap'].values}, index=df_kegg['pathway'].values)
+
+			if df_sig_combined is None:
+				df_sig_combined = df_sig 
+				df_over_combined = df_over
+			else:
+				df_sig_combined = df_sig_combined.join(df_sig, how='outer')
+				df_over_combined = df_over_combined.join(df_over, how='outer')
+
+		# Negative log transform p_adj
+		max_val = 4
+		df_sig_combined = np.minimum(-np.log10(df_sig_combined), max_val)
+		
+		# Sort rows so that KEGG pathways are (roughly) ordered by age of importance
+		df_sig_combined.sort_values(list(df_sig_combined.columns), ascending=False, inplace=True)
+		df_over_combined = df_over_combined.loc[df_sig_combined.index]
+
+		fig, ax_dict = kegg_scores_dotplot(df_over_combined, df_sig_combined)
+		outfile = str(Path(args.mcp_dirs[0]).parent) + '_KEGG.svg'
+		plt.savefig(outfile, dpi=300)
+		#plt.show()
+
+		df_over_combined.to_csv(outfile.replace('.svg', '_overlap.csv'))
+		df_sig_combined.to_csv(outfile.replace('.svg', '_nlpadj.csv'))
+
