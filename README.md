@@ -153,6 +153,9 @@ The main steps of Splotch analysis are the following:
     - ``splotch_generate_input_files``
 6. [Splotch analysis](#splotch-analysis)
     - ``splotch``
+7. [Summarizing cSplotch output](#summarizing-csplotch-output)
+    - ``splotch_compile_lambdas``
+    - ``splotch_compile_betas``
 7. [Downstream analysis](#downstream-analysis)
 
 Below we will describe these steps in detail.
@@ -510,7 +513,7 @@ arguments:
 ```
 
 ### Downstream analysis
-Please see [Tutorial.ipynb](Tutorial.ipynb), as well as the other provided [notebooks](Jupyter notebooks).
+Please see [Tutorial.ipynb](Tutorial.ipynb), as well as the other provided [Jupyter notebooks](notebooks).
  
 
 ### References
