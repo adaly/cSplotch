@@ -478,8 +478,39 @@ Elapsed Time: 89.3442 seconds (Warm-up)
 
 The output is saved in the file ``output_three/36/combined_3661.csv``. 
 
+### Summarizing cSplotch output 
+Because the output from cSplotch can be quite large, depending on the number of genes and spots in the dataset, we provide two command-line tools for summarizing the output in HDF5-formatted AnnData files:
+
+```console
+$ splotch_compile_lambdas -h
+usage: splotch_compile_lambdas [-h] -m META_FILE -i INPUT_DIR -o OUTPUT_DIR -d DEST_FILE
+               
+Summarizes all spot-level variables, including raw counts, predicted cellular composition, and inferred expression rates (lambda).
+
+arguments:
+-h     show this help message and exit
+-m     path to cSplotch metadata file
+-i     top-level directory containing csplotch input files
+-o     top-level directory containing SUMMARIZED (combined_*.hdf5, generated with -s option to splotch) csplotch output files
+-d     destination file (.hdf5)
+```
+
+```console
+$ splotch_compile_betas -h
+usage: splotch_compile_betas [-h] -i INPUT_DIR -o OUTPUT_DIR -d DEST_FILE -l LEVEL 
+               
+Summarizes MROI- and cell-specific variables, namely mean and standard deviation about characteristic expression rates (beta) in each MROI and cell type for each unique condition at the specified model level.
+
+arguments:
+-h     show this help message and exit
+-i     top-level directory containing csplotch input files
+-o     top-level directory containing SUMMARIZED (combined_*.hdf5, generated with -s option to splotch) csplotch output files
+-d     destination file (.hdf5)
+-l     model level (1, 2 or 3) at which to output summary statistics of beta.
+```
+
 ### Downstream analysis
-Please see [Tutorial.ipynb](Tutorial.ipynb).
+Please see [Tutorial.ipynb](Tutorial.ipynb), as well as the other provided [notebooks](Jupyter notebooks).
  
 
 ### References
