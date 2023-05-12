@@ -1,7 +1,7 @@
 
 # cSplotch
 
-Splotch is a hierarchical generative probabilistic model for analyzing Spatial Transcriptomics (ST) [[1]](#references) data.
+cSplotch is a hierarchical generative probabilistic model for analyzing Spatial Transcriptomics (ST) [[1]](#references) data.
 
 
 Features
@@ -17,7 +17,7 @@ Features
 
 We support the original ST array design (1007 spots, a diameter of 100 μm, and a center-to-center distance of 200 μm) by [Spatial Transcriptomics AB](https://spatialtranscriptomics.com), as well as [Visium Spatial Gene Expression Solution](https://www.10xgenomics.com/spatial-transcriptomics/) by [10x Genomics, Inc.](https://www.10xgenomics.com), interfacing directly with file formats output by [Spaceranger and Loupe Browser](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/output/overview).
 
-The Splotch code in this repository supports single-, two-, and three-level experimental designs. These three different hierarchical models are illustrated below: 
+The cSplotch code in this repository supports single-, two-, and three-level experimental designs. These three different hierarchical models are illustrated below: 
 
 ![Hierarchical models](https://www.dropbox.com/s/s5owm1601kala1r/hierarchical_models.png?raw=1)
 
@@ -25,13 +25,13 @@ The Splotch code in this repository supports single-, two-, and three-level expe
 
 Tested on Python 3.5 and 3.7.
 
-Splotch has been tested on Mac and Linux. It has not been tested on Windows.
+cSplotch has been tested on Mac and Linux. It has not been tested on Windows.
 
 ### First installation method
 
-#### Installing Splotch
+#### Installing cSplotch
 
-The following command installs the Splotch Python module and compiles the Stan model in one go
+The following command installs the cSplotch Python module and compiles the Stan model in one go
 ```console
 $ pip install git+https://git@github.com/adaly/cSplotch.git
 $ pip install --no-deps --force-reinstall --upgrade --install-option="--stan" git+https://git@github.com/adaly/cSplotch.git
@@ -70,10 +70,10 @@ For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the in
 
 ### Second installation method
 
-The second installation method installs Splotch and compiles the Stan model in separate steps. 
+The second installation method installs cSplotch and compiles the Stan model in separate steps. 
 
-#### Installing Splotch without compiling the Stan models
-The Splotch Python module can be installed without compiling the Stan models as follows
+#### Installing cSplotch without compiling the Stan models
+The cSplotch Python module can be installed without compiling the Stan models as follows
 ```console
 $ pip install git+https://git@github.com/adaly/cSplotch.git
 ```
@@ -117,28 +117,30 @@ This will install CmdStan in the directory  ``$HOME/cmdstan-$STAN_VERSION``.
 
 The latest CmdStan user guide can be found at https://github.com/stan-dev/cmdstan/releases.
 
-#### Compiling Splotch
-The Splotch Stan model ``splotch_stan_model.stan`` can be compiled using [CmdStan](#installing-cmdstan) as follows
+#### Compiling cSplotch
+The cSplotch Stan models ``splotch_stan_model.stan`` and ``comp_splotch_stan_model.stan`` can be compiled using [CmdStan](#installing-cmdstan) as follows
 ```console
 $ cd $HOME
 $ cd cmdstan-"$STAN_VERSION"
 $ make $HOME/cSplotch/stan/splotch_stan_model
+$ make $HOME/cSplotch/stan/comp_splotch_stan_model
 
 --- Translating Stan model to C++ code ---
 ⋮
 ```
-Here we assume you have [installed CmdStan](installing-cmdstan) in the directory ``$HOME/cmdstan-$STAN_VERSION`` and have the Splotch code in the directory ``$HOME/cSplotch``. Please change the paths if your environment differs.
+Here we assume you have [installed CmdStan](installing-cmdstan) in the directory ``$HOME/cmdstan-$STAN_VERSION`` and have the cSplotch code in the directory ``$HOME/cSplotch``. Please change the paths if your environment differs.
 
-After a successful compilation, you will have the binary ``splotch_stan_model`` in the directory ``$HOME/cSplotch/stan``
+After a successful compilation, you will have the binaries ``splotch_stan_model`` and ``comp_splotch_stan_model`` in the directory ``$HOME/cSplotch/stan``
 ```console
 $ $HOME/cSplotch/stan/splotch_stan_model
-Usage: splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
+$ $HOME/cSplotch/stan/comp_splotch_stan_model
+Usage: [comp_]splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
 ⋮
 Failed to parse arguments, terminating Stan
 ````
 
 ## Usage
-The main steps of Splotch analysis are the following:
+The main steps of cSplotch analysis are the following:
 
 1. [Preparation of count files](#preparation-of-count-files)
     - ``splotch_prepare_count_files``
@@ -149,9 +151,9 @@ The main steps of Splotch analysis are the following:
 4. [Preparation of metadata table](#preparation-of-metadata-table)
     - [Original ST](#original-st-annotations)
     - [Visium ST](#visium-st-annotations)
-5. [Preparation of input data files for Splotch](#preparation-of-input-data-for-splotch)
+5. [Preparation of input data files for cSplotch](#preparation-of-input-data-for-splotch)
     - ``splotch_generate_input_files``
-6. [Splotch analysis](#splotch-analysis)
+6. [cSplotch analysis](#splotch-analysis)
     - ``splotch``
 7. [Summarizing cSplotch output](#summarizing-csplotch-output)
     - ``splotch_compile_lambdas``
@@ -162,7 +164,7 @@ Below we will describe these steps in detail.
 
 #### Example data
 
-In the directory ``examples``, we have some example ST data [[3]](#references). We will use this example data set in this documentation to demonstrate the use of Splotch.
+In the directory ``examples``, we have some example ST data [[3]](#references). We will use this example data set in this documentation to demonstrate the use of cSplotch.
 
 ### Preparation of count files
 
@@ -191,7 +193,7 @@ $ splotch_prepare_count_files --help
 usage: splotch_prepare_count_files [-h] -c COUNT_DATA [COUNT_FILES ...]
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
 
-A script for preparing count files for Splotch
+A script for preparing count files for cSplotch
 
 optional arguments:
 -h, --help              show this help message and exit
@@ -216,14 +218,14 @@ usage: splotch_prepare_count_files [-h] -c COUNT_DATA [SPACERANGER_COUNT_DIRS ..
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
                                    [-V]
 
-A script for preparing count files for Splotch
+A script for preparing count files for cSplotch
 
 optional arguments:
 -h, --help              show this help message and exit
 -c COUNT_DATA [SPACERANGER_COUNT_DIRS ...], --count_data [SPACERANGER_COUNT_DIRS ...]
                         list of spaceranger count directories
 -s SUFFIX, --suffix SUFFIX
-                        suffix to be added to the sample name in creation of Splotch count file within each spaceranger directory (default is .unified.tsv)
+                        suffix to be added to the sample name in creation of cSplotch count file within each spaceranger directory (default is .unified.tsv)
 -d MINIMUM_DETECTION_RATE, --minimum_detection_rate MINIMUM_DETECTION_RATE
                         minimum detection rate (default is 0.02)
 -V, --Visium            data are from the Visium platform
@@ -242,7 +244,7 @@ INFO:root:The median sequencing depth across the ST spots is 2389
 ```
 
 ### Annotation of ST spots
-To get the most out of the statistical model of Splotch one has to annotate the ST spots based on their tissue context. These annotations will allow the model to share information across tissue sections, resulting in more robust conclusions.
+To get the most out of the statistical model of cSplotch one has to annotate the ST spots based on their tissue context. These annotations will allow the model to share information across tissue sections, resulting in more robust conclusions.
 
 #### Original ST annotations
 
@@ -331,7 +333,7 @@ The user can include additional columns at their own discretion. For instance, w
 
 The metadata table containing information about the provided example data set can be found at ``examples/metadata.tsv``.
 
-### Preparation of input data for Splotch
+### Preparation of input data for cSplotch
 Stan can only read data in R dump format, in which variables are declared as scalars, sequences, or general arrays and defined in terms of their dimensionalities and values. Therefore, we have to make the ST data compatible with the data types in Stan (e.g. Stan does not have ragged array or dictionary data types).
 
 To make this step less painful for the user, we have provided the script ``splotch_generate_input_files``
@@ -346,7 +348,7 @@ usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
                                     [-V] [-v] [-p] [-e SINGLE_CELL_ANNDATA] 
                                     [-g GROUP_KEY] [-G GENE_SYMBOLS]
 
-A script for generating input data for Splotch
+A script for generating input data for cSplotch
   
 optional arguments:
 -h, --help            show this help message and exit
@@ -396,7 +398,7 @@ The CAR prior can be disabled by providing ``-n``.
 
 #### Example
 
-As an example, we have provided ``Level 1``, ``Level 2``, and ``Level 3`` metadata on the samples in ``examples/metadata.tsv`` and we wish to analyze the data using the three-level model with the CAR prior and zero-inflated Poisson likelihood . In this case, we can prepare the input data files for Splotch as follows
+As an example, we have provided ``Level 1``, ``Level 2``, and ``Level 3`` metadata on the samples in ``examples/metadata.tsv`` and we wish to analyze the data using the three-level model with the CAR prior and zero-inflated Poisson likelihood . In this case, we can prepare the input data files for cSplotch as follows
 ```console
 $ splotch_generate_input_files -c examples/Count_Tables/*_stdata_aligned_counts_IDs.txt.unified.tsv -m examples/metadata.tsv -s 2389.0 -l 3 -o data_three
 INFO:root:Reading metadata
@@ -420,23 +422,23 @@ INFO:root:Finished
 The input data files are saved in the directory ``data_three``.
 
 
-### Splotch analysis
-Please make sure you have [compiled the Splotch models](#installation) before continuing with this section.
+### cSplotch analysis
+Please make sure you have [compiled the cSplotch models](#installation) before continuing with this section.
 
-The provided Bash script ``splotch`` is a wrapper for running Splotch
+The provided Bash script ``splotch`` is a wrapper for running cSplotch
 ```console
 $ splotch -h
 usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY
                -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
 
-A wrapper for running Splotch
+A wrapper for running cSplotch
 
 optional arguments:
 -h     show this help message and exit
 -g     gene index
 -d     data directory
 -o     output directory
--b     Splotch binary
+-b     cSplotch binary
 -n     number of samples
 -c     number of chains
 -s     store summary statistics instead of full posteriors for all variables besides betas (much more memory-efficient!)
@@ -447,7 +449,7 @@ Note that ``splotch`` forks a process for each requested chain (``-c NUM_CHAINS`
 
 Moreover,  ``splotch`` follows the same subdirectory scheme (in ``-c OUTPUT_DIRECTORY``) as ``splotch_generate_input_files``.
 
-The use of parallel computing to speed up the computation is trivial because Splotch is embarrassingly parallel across genes.
+The use of parallel computing to speed up the computation is trivial because cSplotch is embarrassingly parallel across genes.
 
 #### Example
 
