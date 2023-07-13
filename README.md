@@ -19,7 +19,7 @@ We support the original ST array design (1007 spots, a diameter of 100 μm, and 
 
 The cSplotch code in this repository supports single-, two-, and three-level experimental designs. These three different hierarchical models are illustrated below: 
 
-![Hierarchical models](https://www.dropbox.com/s/s5owm1601kala1r/hierarchical_models.png?raw=1)
+![Hierarchical models](cSplotch_Model.png)
 
 ## Installation
 
