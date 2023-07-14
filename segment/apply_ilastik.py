@@ -41,6 +41,21 @@ def apply_cellclass_model(ilastik_dir, ilastik_model, he_imgfiles, seg_imgfiles,
 
 # Segments nuclei from a nuclear density map and removes small objects
 def segment_density_map(dens_img, otsu_connectivity=7, min_size=50):
+	'''
+	Parameters:
+	----------
+	dens_img: ndarray
+		single-channel image with pixel values representing probability of nucleus
+	otsu_connectivity: int
+		connectivity used in identification of local maxima (potential nuclear centroids)
+	min_size: int
+		minimum size (pixels) for object to keep
+
+	Returns:
+	-------
+	ofile: path
+		path to saved segmented image file
+	'''
 	maskimg = Image.open(dens_img).convert('L')
 	maskimg = np.array(maskimg)
 
@@ -83,7 +98,7 @@ if __name__ == '__main__':
 		help='Trained cell classification model to be applied to segmented density maps')
 	parser.add_argument('-o', '--output-dir', type=str, required=True,
 		help='Destination in which to save nuclear density and cell label maps')
-	parser.add_argument('-s', '--segment-first', type=bool, default=False,
+	parser.add_argument('-s', '--segment-first', action='store_true', default=False,
 		help='If Ilastik model expects segmented image input, perform segmentation programmatically.'\
 		'Otherwise, allow Ilastik to segment density map.')
 	parser.add_argument('-x', '--otsu-connectivity', type=int, default=7,
