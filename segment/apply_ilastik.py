@@ -92,12 +92,12 @@ if __name__ == '__main__':
 		help='Path to top-level Ilastik directory (Linux) or /Applications/[ilastik_version].app/Contents/ilastik-release/ (Mac)')
 	parser.add_argument('-i', '--he-imgfiles', type=str, nargs='+', required=True,
 		help='HE images extracted from spot locations in ST data')
-	parser.add_argument('-d', '--density-model', type=str, required=True,
-		help='Trained nuclear density Ilastik model to be applied to HE images')
 	parser.add_argument('-c', '--cellclass-model', type=str, required=True,
 		help='Trained cell classification model to be applied to segmented density maps')
 	parser.add_argument('-o', '--output-dir', type=str, required=True,
 		help='Destination in which to save nuclear density and cell label maps')
+	parser.add_argument('-d', '--density-model', type=str, required=False,
+		help='Trained nuclear density Ilastik model to be applied to HE images')
 	parser.add_argument('-s', '--segment-first', action='store_true', default=False,
 		help='If Ilastik model expects segmented image input, perform segmentation programmatically.'\
 		'Otherwise, allow Ilastik to segment density map.')
@@ -121,8 +121,9 @@ if __name__ == '__main__':
 	else:
 		seg_imgfiles = dens_imgfiles
 
-	apply_cellclass_model(args.ilastik_location, args.cellclass_model,
-		args.he_imgfiles, seg_imgfiles, args.output_dir)
+	if args.cellclass_model is not None:
+		apply_cellclass_model(args.ilastik_location, args.cellclass_model,
+			args.he_imgfiles, seg_imgfiles, args.output_dir)
 
 	'''
 	cellclass_lblfiles = [os.path.join(args.output_dir, Path(he).stem+CELLCLASS_SUFFIX) for he in args.he_imgfiles]
