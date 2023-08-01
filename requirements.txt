@@ -6,3 +6,4 @@ scikit-learn>=0.18.1
 jax  
 jaxlib 
 h5py
+scanpy
