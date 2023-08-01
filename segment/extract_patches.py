@@ -34,7 +34,7 @@ def filter_patches_by_annotation(pos, df_annot, annotations):
 	return pos.loc[barcodes_keep]
 
 # Extracts image patches of a specified size + resolution and saves as separate JPEG files.
-def extract_patches(img_file, pos, output_dir, patch_size_um=55, output_resolution=1.4,
+def extract_patches(img_file, pos, output_dir, patch_size_um=55, output_resolution=None,
 	array_name=None):
 	'''
 	Parameters:
@@ -63,10 +63,14 @@ def extract_patches(img_file, pos, output_dir, patch_size_um=55, output_resoluti
 	x,y = np.where(arr_dist==2)
 	assert len(x)>0 and len(y)>0, 'Unable to locate adjacent spots on array'
 	d100 = pix_dist[y[0],x[0]]
-	print('100um = %d pixels' % d100)
 
 	visium_resolution = d100/100
 	patch_size_px = int(np.rint(visium_resolution * patch_size_um))
+
+	print('%.2fum = %d pixels' % (patch_size_um, patch_size_px))
+
+	if output_resolution is None:
+		output_resolution = visium_resolution
 
 	# Only consider spots that are covered by tissue.
 	pos = pos[pos['in_tissue']==1]
@@ -113,7 +117,7 @@ if __name__ == '__main__':
 		help='Use classic ST format instead of Visium')
 	parser.add_argument('-u', '--patch-size-um', type=float, default=55,
 		help='Size of image patches centered at spot locations, in um')
-	parser.add_argument('-p', '--pixels-per-um', type=float, default=1.4,
+	parser.add_argument('-p', '--pixels-per-um', type=float, default=None,
 		help='Resolution of output patches, in pixels per um')
 	parser.add_argument('-n', '--array-name', type=str, default=None,
 		help='Column in metadata table containing array name. Defaults to image filename.')
