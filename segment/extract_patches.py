@@ -111,6 +111,8 @@ if __name__ == '__main__':
 		help='List of MROIs from which to extract spots (defaults to all spots)')
 	parser.add_argument('-c', '--classic-st', action='store_true', default=False,
 		help='Use classic ST format instead of Visium')
+	parser.add_argument('-u', '--patch-size-um', type=float, default=55,
+		help='Size of image patches centered at spot locations, in um')
 	parser.add_argument('-p', '--pixels-per-um', type=float, default=1.4,
 		help='Resolution of output patches, in pixels per um')
 	parser.add_argument('-n', '--array-name', type=str, default=None,
@@ -151,5 +153,5 @@ if __name__ == '__main__':
 			array_name = meta.iloc[i][args.array_name]
 
 		# Read slide image file and extract spot images
-		extract_patches(img_file, positions, args.output_dir, 
+		extract_patches(img_file, positions, args.output_dir, patch_size_um=args.patch_size_um, 
 			output_resolution=args.pixels_per_um, array_name=array_name)
