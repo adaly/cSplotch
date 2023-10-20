@@ -110,8 +110,7 @@ def gene_facet_kdes(gene_summary, sinfo, conditions=None, aars=None, cell_types=
  
     g = sns.displot(data, row=row, col=col, x='Beta', hue=hue, kind='kde', **kwargs)
 
-    #latex style x axis label - beta_{l_condition_levl}
-    g.set_axis_labels(x_var=r'$\beta_{l_' + str(condition_level) + r'}$')
+    g.set_axis_labels(x_var=r'$\beta (log counts)$')
 
     return g
 
@@ -156,7 +155,7 @@ def plot_lambda(gene_summary, gene_r, gene_name, sinfo, library_sample_id, pseud
     assert library_sample_id in sinfo['metadata'][sample_col_key].values
 
     #assign defaults for kwargs
-    fig_kw = {} if fig_kw is None else fig_kw
+    fig_kw = {'constrained_layout': True, 'figsize': (16, 4)} if fig_kw is None else fig_kw
     aar_kw = {} if aar_kw is None else aar_kw
     raw_count_kw = {'palette':'flare'} if raw_count_kw is None else raw_count_kw
     lambda_kw = {'palette':'flare'} if lambda_kw is None else lambda_kw
@@ -190,7 +189,6 @@ def plot_lambda(gene_summary, gene_r, gene_name, sinfo, library_sample_id, pseud
 
     n_plots = 3
     fig, axs = plt.subplots(ncols=n_plots, **fig_kw)
-    fig.tight_layout()
 
     sns.scatterplot(sample_spots, x='x', y='y', hue='AAR', ax=axs[0], s=circle_size, edgecolors='face', **aar_kw)
     sns.scatterplot(sample_spots, x='x', y='y', hue='Raw count', ax=axs[1], s=circle_size, edgecolors='face', **raw_count_kw)
