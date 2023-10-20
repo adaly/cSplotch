@@ -1,7 +1,11 @@
+import os
+import h5py
 import numpy as np
 import pandas as pd
+import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from splotch.utils import to_stan_variables
 
 def oddr_to_pseudo_hex(col, row):
@@ -115,7 +119,7 @@ def gene_facet_kdes(gene_summary, sinfo, conditions=None, aars=None, cell_types=
     return g
 
 
-def plot_lambda(gene_summary, gene_r, gene_name, sinfo, library_sample_id, pseudo_to_actual=True, circle_size=10, fig_kw=None, aar_kw=None, raw_count_kw=None, lambda_kw=None):
+def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, pseudo_to_actual=True, circle_size=10, fig_kw=None, aar_kw=None, raw_count_kw=None, lambda_kw=None):
     """
     Plots the distributions of the priors of a given gene, grouped by conditions or AARs
 
@@ -200,3 +204,87 @@ def plot_lambda(gene_summary, gene_r, gene_name, sinfo, library_sample_id, pseud
     
     fig.suptitle(f"Expression of {gene_name} in {library_sample_id}")
     return fig, axs
+
+
+def get_filtered_lambdas(sinfo, gene_summaries_path, conditions=None, condition_level=1, save_to_path=None):
+
+    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
+    #default to all
+    if conditions == None:
+        conditions = all_conditions
+
+    
+    metadata = sinfo['metadata']
+    filtered_metadata = metadata[metadata[f'Level 1'] == 'TDP_knockout']
+
+    filtered_filenames = filtered_metadata['Count file'].tolist()
+    all_filenames = np.array(sinfo['filenames_and_coordinates'])[:, 0]
+
+    spot_idxs = np.where(np.isin(all_filenames, filtered_filenames))[0]
+
+    num_genes = len(sinfo['genes'])
+
+    lambda_arr = np.zeros((len(spot_idxs), num_genes))
+
+    for gene_idx in tqdm.trange(1, num_genes + 1, desc="Reading gene summaries"):
+        gene_summary = h5py.File(os.path.join(gene_summaries_path, str(gene_idx // 100), f'combined_{gene_idx}.hdf5'))
+        lambda_arr[:, gene_idx - 1] = gene_summary['lambda']['mean'][spot_idxs]
+
+    if save_to_path is not None:
+        np.save(save_to_path, lambda_arr)
+        print(f"Saved lambda_arr to {save_to_path}")
+
+    return lambda_arr
+
+
+def get_linkage_Z(lambda_arr, method='complete', metric='correlation', save_to_path=None):
+    #cluster genes by correlations of spots, so transpose to make genes rows
+    Z = linkage(lambda_arr.T, method=method, metric=metric)
+    
+    if save_to_path is not None:
+        np.save(save_to_path, Z)
+        print(f"Saved linkage matrix Z to {save_to_path}")
+
+    return Z
+    
+
+def dendrogram_correlation(lambda_arr, Z=None, cmap='Spectral', threshold=None, fig_kwargs=None):
+    fig_kwargs = {} if fig_kwargs is None else fig_kwargs
+
+    if Z is None:
+        Z = get_linkage_Z(lambda_arr)
+
+    if threshold is None:
+        threshold = 0.7*max(Z[:,2]) #default threshold according to scipy (and Matlab)
+        
+    tdp_dict = dendrogram(Z, no_plot=True)
+    leaves = tdp_dict['leaves']
+
+    fig = plt.figure(figsize=(5,5))
+    # Add an axes at position rect [left, bottom, width, height]
+    ax1 = fig.add_axes([0.09, 0.1, 0.2, 0.6])
+    dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax1, color_threshold=threshold, orientation='left')
+    ax1.axvline(threshold, linestyle="--")
+    ax1.invert_yaxis()
+    ax1.axis('off')
+
+    ax2 = fig.add_axes([0.3, 0.71, 0.6, 0.2])
+    dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax2, color_threshold=threshold, orientation='top')
+    ax2.axhline(threshold, linestyle="--")
+    ax2.axis('off')
+
+    corr = np.corrcoef(lambda_arr, rowvar=False)
+
+    axmatrix = fig.add_axes([0.3, 0.1, 0.6, 0.6])
+    axcolor = fig.add_axes([0.94, 0.1, 0.02, 0.6])
+    
+    sns.heatmap(corr[leaves][:, leaves], yticklabels=False, xticklabels=False, cmap=cmap, vmin=-1, vmax=1, ax=axmatrix, cbar_ax=axcolor, cbar_kws={'label': "Pearson's Correlation Coefficient"})
+    fig.suptitle("Co-expression modules and gene-gene correlation")
+    return fig, (ax1, ax2, axmatrix, axcolor)
+
+
+def dendrogram_aars():
+    pass
+
+def clusters_on_sample(lambda_arr, ):
+    pass
