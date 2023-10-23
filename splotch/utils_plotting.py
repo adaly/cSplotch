@@ -3,6 +3,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import tqdm
+from matplotlib import gridspec
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
@@ -281,8 +282,58 @@ def dendrogram_correlation(lambda_arr, Z=None, cmap='Spectral', threshold=None, 
     return fig, (ax1, ax2, axmatrix, axcolor)
 
 
-def dendrogram_aars():
-    pass
+def dendrogram_aars(lambda_arr, Z, sinfo, sample_gene_r, lambda_conditions=None, condition_level=1, fig_kw=None, heatmap_kw=None):
+    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
+    if lambda_conditions is None:
+        print(f"Warning: 'lambda_conditions' was not specified. Assuming that 'lambda_arr' was constructed using all level {condition_level} conditions: {lambda_conditions}")
+        lambda_conditions = all_conditions
+
+    fig_kw = {} if fig_kw is None else fig_kw
+    heatmap_kw = {} if heatmap_kw is None else heatmap_kw
+
+    genes = sinfo['genes']
+    metadata = sinfo['metadata']
+    filtered_metadata = metadata[metadata[f'Level {condition_level}'].isin(lambda_conditions)]
+
+    filtered_filenames = filtered_metadata['Count file'].tolist()
+    all_filenames = np.array(sinfo['filenames_and_coordinates'])[:, 0]
+
+    spot_idxs = np.where(np.isin(all_filenames, filtered_filenames))[0]
+    
+    aar_idx = sample_gene_r['D'] - 1
+    aars = np.array([sinfo['annotation_mapping'][idx] for idx in aar_idx])
+    spot_aars = aars[spot_idxs]
+
+    all_aars = sinfo['annotation_mapping']
+    aars_by_genes = np.zeros((len(all_aars), len(genes)))
+
+    for i, aar in enumerate(all_aars):
+        aar_idxs = np.where(spot_aars == aar)[0]
+        aars_by_genes[i, :] = np.mean(lambda_arr[aar_idxs], axis=0)
+
+    aars_by_genes = minmax_scale(aars_by_genes, feature_range=(0,1), axis=0)
+
+    
+    fig = plt.figure(constrained_layout=True, **fig_kw)
+
+    gs = gridspec.GridSpec(nrows=2, ncols=1,
+                       height_ratios=[1, 3],
+                       figure=fig)
+
+    ax1 = plt.subplot(gs[0])
+    ax2 = plt.subplot(gs[1])
+
+    tdp_dict = dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax1)
+    leaves = tdp_dict['leaves']
+    
+    t = 0.7*max(Z[:,2])
+    ax1.axhline(t, linestyle="--")
+    ax1.axis('off')
+
+    sns.heatmap(aars_by_genes[:, leaves], xticklabels=False, yticklabels=all_aars, ax=ax2, **heatmap_kw)
+
+    return fig, (ax1, ax2)
+
 
 def get_modules(Z, threshold=None):
     if threshold is None:
