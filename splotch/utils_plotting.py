@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from splotch.utils import to_stan_variables
+from sklearn.preprocessing import minmax_scale
 
 def oddr_to_pseudo_hex(col, row):
 	y_vis = row
@@ -178,18 +179,15 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
 
     target_filename = sinfo['metadata'][sinfo['metadata'][sample_col_key] == library_sample_id]['Count file'].tolist()[0]
     
-    sample_spots = all_spots.iloc[np.where(filenames == target_filename)[0]]
+    sample_spots = all_spots.iloc[np.where(filenames == target_filename)[0]].copy()
     
     assert sample_spots.shape[0] > 0, f"The array {library_sample_id} did not have spots that were used in the Splotch run"
 
-    #briefly surpress a false warning
-    pd.options.mode.chained_assignment = None
     if pseudo_to_actual:
         transformed_coords = np.array(sample_spots[['x', 'y']].apply(lambda row: pseudo_hex_to_actual(row[0], row[1]), axis=1).to_list())
     else:
         transformed_coords = np.array(sample_spots[['x','y']])
     sample_spots[['x', 'y']] = transformed_coords
-    pd.options.mode.chained_assignment = 'warn'
 
     n_plots = 3
     fig, axs = plt.subplots(ncols=n_plots, **fig_kw)
@@ -215,7 +213,7 @@ def get_filtered_lambdas(sinfo, gene_summaries_path, conditions=None, condition_
 
     
     metadata = sinfo['metadata']
-    filtered_metadata = metadata[metadata[f'Level 1'] == 'TDP_knockout']
+    filtered_metadata = metadata[metadata[f'Level {condition_level}'].isin(conditions)]
 
     filtered_filenames = filtered_metadata['Count file'].tolist()
     all_filenames = np.array(sinfo['filenames_and_coordinates'])[:, 0]
@@ -286,5 +284,85 @@ def dendrogram_correlation(lambda_arr, Z=None, cmap='Spectral', threshold=None, 
 def dendrogram_aars():
     pass
 
-def clusters_on_sample(lambda_arr, ):
-    pass
+def get_modules(Z, threshold=None):
+    if threshold is None:
+        threshold = 0.7*max(Z[:,2]) 
+    return fcluster(Z, threshold, criterion="distance")
+
+
+def modules_on_sample(lambda_arr, sinfo, library_sample_id, lambda_conditions=None, condition_level=1, Z=None, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
+    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
+    if lambda_conditions is None:
+        print(f"Warning: 'lambda_conditions' was not specified. Assuming that 'lambda_arr' was constructed using all level {condition_level} conditions: {lambda_conditions}")
+        lambda_conditions = all_conditions
+
+    fig_kw = {} if fig_kw is None else fig_kw
+    module_kw = {} if module_kw is None else module_kw
+
+
+
+    if Z is None:
+        Z = get_linkage_Z(lambda_arr)
+    
+    if 'library_sample_id' in sinfo['metadata'].columns:
+        sample_col_key = 'library_sample_id'
+    else:
+        sample_col_key = 'Name'
+    
+    metadata = sinfo['metadata']
+    f_and_c = np.array(sinfo['filenames_and_coordinates'])
+
+    filenames = f_and_c[:, 0]
+
+    x_y = np.array([xy.split("_") for xy in f_and_c[:, 1]]).astype(float)
+
+    all_spots = pd.DataFrame(x_y, columns=['x', 'y'])
+
+    target_filename = metadata[metadata[sample_col_key] == library_sample_id]['Count file'].tolist()[0]
+
+    target_idxs = np.where(filenames == target_filename)[0]
+    sample_spots = all_spots.iloc[target_idxs].copy()
+    
+    assert sample_spots.shape[0] > 0, f"The array {library_sample_id} did not have spots that were used in the Splotch run"
+
+    if pseudo_to_actual:
+        transformed_coords = np.array(sample_spots[['x', 'y']].apply(lambda row: pseudo_hex_to_actual(row[0], row[1]), axis=1).to_list())
+    else:
+        transformed_coords = np.array(sample_spots[['x','y']])
+    sample_spots[['x', 'y']] = transformed_coords
+
+
+    #have to match lambda_arr filter so the spot idxs line up
+    filtered_metadata = metadata[metadata[f'Level {condition_level}'].isin(lambda_conditions)]
+    filtered_filenames = filtered_metadata['Count file'].tolist()
+    long_filtered_filenames = filenames[np.isin(filenames, filtered_filenames)]
+    filtered_idxs = np.where(long_filtered_filenames == target_filename)[0]
+    target_lambda_arr = lambda_arr[filtered_idxs]
+
+    scaled_lambdas = minmax_scale(target_lambda_arr, (0,1))
+
+    gene_modules = get_modules(Z)
+
+    module_list = np.unique(gene_modules)
+
+    x = sample_spots['x'].tolist()
+    y = sample_spots['y'].tolist()
+
+    n_plots = len(module_list)
+    fig, axs = plt.subplots(ncols=ncols, nrows=np.ceil(n_plots/ ncols).astype(int), figsize=(30,30), **fig_kw)
+    axs = np.ravel(axs)
+
+    for i, module in enumerate(module_list):
+        genes_in_m = np.where(gene_modules == module)[0]
+        scaled_expr = minmax_scale(np.mean(scaled_lambdas[:, genes_in_m], axis=1), (0,1)).tolist()
+        im = axs[i].scatter(x=x, y=y, c=scaled_expr, s=circle_size, edgecolors='face', **module_kw)
+        axs[i].set_aspect('equal')
+        axs[i].set_title(f"Module {module}")
+        fig.colorbar(im, ax=axs[i])
+    
+    #iterate through the last plots to make them blank
+    num_remaining = ncols - (n_plots % ncols)
+    for idx in range(-1, -(num_remaining+1), -1):
+        axs[idx].set_visible(False)
+
+    return fig, axs
