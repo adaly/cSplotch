@@ -9,6 +9,7 @@ import seaborn as sns
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from splotch.utils import to_stan_variables
 from sklearn.preprocessing import minmax_scale
+from functools import cached_property
 
 def oddr_to_pseudo_hex(col, row):
 	y_vis = row
@@ -205,53 +206,51 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
     return fig, axs
 
 
-def get_filtered_lambdas(sinfo, gene_summaries_path, conditions=None, condition_level=1, save_to_path=None):
+class CoexpressionModule:
+    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='complete', linkage_metric='correlation'):
+        self.sinfo = sinfo
+        self.gene_summaries_path = gene_summaries_path
+        self.conditions = conditions
+        self.condition_level = condition_level
+        self.linkage_method = linkage_method
+        self.linkage_metric = linkage_metric
 
-    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
-    #default to all
-    if conditions == None:
-        conditions = all_conditions
+    @cached_property
+    def lambda_arr(self):
+        metadata = self.sinfo['metadata']
+        filtered_metadata = metadata[metadata[f'Level {self.condition_level}'].isin(self.conditions)]
 
+        filtered_filenames = filtered_metadata['Count file'].tolist()
+        all_filenames = np.array(self.sinfo['filenames_and_coordinates'])[:, 0]
+
+        spot_idxs = np.where(np.isin(all_filenames, filtered_filenames))[0]
+
+        num_genes = len(self.sinfo['genes'])
+
+        lambda_arr = np.zeros((len(spot_idxs), num_genes))
+
+        for gene_idx in tqdm.trange(1, num_genes + 1, desc="Reading gene summaries for 'lambda_arr'"):
+            gene_summary = h5py.File(os.path.join(self.gene_summaries_path, str(gene_idx // 100), f'combined_{gene_idx}.hdf5'))
+            lambda_arr[:, gene_idx - 1] = gene_summary['lambda']['mean'][spot_idxs]
+
+        return lambda_arr
     
-    metadata = sinfo['metadata']
-    filtered_metadata = metadata[metadata[f'Level {condition_level}'].isin(conditions)]
-
-    filtered_filenames = filtered_metadata['Count file'].tolist()
-    all_filenames = np.array(sinfo['filenames_and_coordinates'])[:, 0]
-
-    spot_idxs = np.where(np.isin(all_filenames, filtered_filenames))[0]
-
-    num_genes = len(sinfo['genes'])
-
-    lambda_arr = np.zeros((len(spot_idxs), num_genes))
-
-    for gene_idx in tqdm.trange(1, num_genes + 1, desc="Reading gene summaries"):
-        gene_summary = h5py.File(os.path.join(gene_summaries_path, str(gene_idx // 100), f'combined_{gene_idx}.hdf5'))
-        lambda_arr[:, gene_idx - 1] = gene_summary['lambda']['mean'][spot_idxs]
-
-    if save_to_path is not None:
-        np.save(save_to_path, lambda_arr)
-        print(f"Saved lambda_arr to {save_to_path}")
-
-    return lambda_arr
-
-
-def get_linkage_Z(lambda_arr, method='complete', metric='correlation', save_to_path=None):
-    #cluster genes by correlations of spots, so transpose to make genes rows
-    Z = linkage(lambda_arr.T, method=method, metric=metric)
+    @cached_property
+    def linkage_Z(self):
+        Z = linkage(self.lambda_arr.T, method=self.linkage_method, metric=self.linkage_metric)
+        return Z
     
-    if save_to_path is not None:
-        np.save(save_to_path, Z)
-        print(f"Saved linkage matrix Z to {save_to_path}")
-
-    return Z
+    def get_gene_modules(self, threshold=None):
+        if threshold is None:
+            threshold = 0.7*max(self.linkage_Z[:,2]) 
+        return fcluster(self.linkage_Z, threshold, criterion="distance")
     
 
-def dendrogram_correlation(lambda_arr, Z=None, cmap='Spectral', threshold=None, fig_kwargs=None):
+def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral', threshold=None, fig_kwargs=None):
     fig_kwargs = {} if fig_kwargs is None else fig_kwargs
 
-    if Z is None:
-        Z = get_linkage_Z(lambda_arr)
+    lambda_arr = coexpression_module.lambda_arr
+    Z = coexpression_module.linkage_Z
 
     if threshold is None:
         threshold = 0.7*max(Z[:,2]) #default threshold according to scipy (and Matlab)
@@ -282,11 +281,12 @@ def dendrogram_correlation(lambda_arr, Z=None, cmap='Spectral', threshold=None, 
     return fig, (ax1, ax2, axmatrix, axcolor)
 
 
-def dendrogram_aars(lambda_arr, Z, sinfo, sample_gene_r, lambda_conditions=None, condition_level=1, fig_kw=None, heatmap_kw=None):
-    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
-    if lambda_conditions is None:
-        print(f"Warning: 'lambda_conditions' was not specified. Assuming that 'lambda_arr' was constructed using all level {condition_level} conditions: {lambda_conditions}")
-        lambda_conditions = all_conditions
+def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_kw=None, heatmap_kw=None):
+    lambda_arr = coexpression_module.lambda_arr
+    Z = coexpression_module.linkage_Z
+    sinfo = coexpression_module.sinfo
+    lambda_conditions = coexpression_module.conditions
+    condition_level = coexpression_module.condition_level
 
     fig_kw = {} if fig_kw is None else fig_kw
     heatmap_kw = {} if heatmap_kw is None else heatmap_kw
@@ -335,25 +335,15 @@ def dendrogram_aars(lambda_arr, Z, sinfo, sample_gene_r, lambda_conditions=None,
     return fig, (ax1, ax2)
 
 
-def get_modules(Z, threshold=None):
-    if threshold is None:
-        threshold = 0.7*max(Z[:,2]) 
-    return fcluster(Z, threshold, criterion="distance")
-
-
-def modules_on_sample(lambda_arr, sinfo, library_sample_id, lambda_conditions=None, condition_level=1, Z=None, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
-    all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
-    if lambda_conditions is None:
-        print(f"Warning: 'lambda_conditions' was not specified. Assuming that 'lambda_arr' was constructed using all level {condition_level} conditions: {lambda_conditions}")
-        lambda_conditions = all_conditions
-
+def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
+    lambda_arr = coexpression_module.lambda_arr
+    Z = coexpression_module.linkage_Z
+    sinfo = coexpression_module.sinfo
+    lambda_conditions = coexpression_module.conditions
+    condition_level = coexpression_module.condition_level
+    
     fig_kw = {} if fig_kw is None else fig_kw
     module_kw = {} if module_kw is None else module_kw
-
-
-
-    if Z is None:
-        Z = get_linkage_Z(lambda_arr)
     
     if 'library_sample_id' in sinfo['metadata'].columns:
         sample_col_key = 'library_sample_id'
@@ -392,7 +382,7 @@ def modules_on_sample(lambda_arr, sinfo, library_sample_id, lambda_conditions=No
 
     scaled_lambdas = minmax_scale(target_lambda_arr, (0,1))
 
-    gene_modules = get_modules(Z)
+    gene_modules = coexpression_module.get_gene_modules()
 
     module_list = np.unique(gene_modules)
 
