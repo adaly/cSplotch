@@ -56,7 +56,10 @@ def gene_facet_kdes(gene_summary, sinfo, conditions=None, aars=None, cell_types=
     """
 
     groups = ['Condition', 'AAR', 'Cell type']
-    assert hue in groups, f"hue must be set to {groups}"
+    assert hue in groups, f"'hue' must be set to {groups}"
+    assert row is None or row in groups, f"If specified, 'row' must be set to {groups}"
+    assert col is None or col in groups, f"If specified, 'col' must be set to {groups}"
+
     assert condition_level > 0 and condition_level <= sinfo['n_levels'], f"'condition_level' must be set to a value between 1,...,{sinfo['n_levels']}"
     
     beta_level_str = f"beta_level_{condition_level}"
