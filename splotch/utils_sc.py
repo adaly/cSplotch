@@ -132,7 +132,7 @@ def celltype_beta_priors(st_cell_types, st_gene_list, sc_adata=None, sc_group_ke
 		# Count number of cell types shared between ST and single-cell, and throw a warning if some are missing!
 		n_shared_celltypes = len(np.intersect1d(st_cell_types, sc_group_means.columns))
 		if n_shared_celltypes < len(st_cell_types):
-			logging.warning('%d ST cell types not found in single-cell data!' % len(st_cell_types-n_shared_celltypes))
+			logging.warning('%d ST cell types not found in single-cell data!' % (len(st_cell_types)-n_shared_celltypes))
 
 		# For all observed (gene, celltype) pairs, use empirical mean/std as prior hyperparameters.
 		for i, gene in enumerate(st_gene_list):
