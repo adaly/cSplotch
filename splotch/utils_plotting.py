@@ -150,6 +150,7 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
         Keyword arguments that are passed to seaborn.scatterplot() for the raw count plot.
     lambda_kw : dict
         Keyword arguments that are passed to seaborn.scatterplot() for the lambda plot.
+    
     Returns
     -------
     fig, axs
@@ -207,7 +208,33 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
 
 
 class CoexpressionModule:
+    """
+    Stores lambda values and biclustering linkage matrix to help visualize coexpression modules
+    """
     def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='complete', linkage_metric='correlation', calculate_properties=False):
+        """
+        Parameters
+        ----------
+        sinfo : Obj
+            Unpickled information.p.
+        gene_summaries_path : str
+            Path to directoring containing gene summary files.
+        conditions : list[str]
+            List of beta level conditions to filter by.
+        condition_level : int
+            Level of hierarchical beta variables to filter by.
+        linkage_method : str (default 'complete')
+            The linkage algorithm to use for the biclustering.
+            See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
+        linkage_metric : str (default 'correlation')
+            The metric to use in the linkage algorithm for the biclustering.
+            See https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
+        calculate_properties : boolean (default False)
+            Whether to calculate 'lambda_arr' and 'linkage_Z' on initialization.
+        """
+        all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
+        assert set(conditions).issubset(set(all_conditions)), \
+            f"The conditions must be a list of elements from the conditions at level {condition_level}: {all_conditions}"
         self.sinfo = sinfo
         self.gene_summaries_path = gene_summaries_path
         self.conditions = conditions
@@ -245,13 +272,44 @@ class CoexpressionModule:
         return Z
     
     def get_gene_modules(self, threshold=None):
+        """
+        Finds the co-expression module for each gene using linkage_Z
+
+        Parameters
+        ----------
+        threshold : float (default None)
+            Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
+            None defaults to 0.7*max(linkage_Z[:,2]) (corresponds with MATLAB and scipy default).
+        
+        Returns
+        -------
+        fcluster : ndarray
+            Array of size (# of genes, 1), where each element is the module the genes belongs to.
+        """
         if threshold is None:
             threshold = 0.7*max(self.linkage_Z[:,2]) 
         return fcluster(self.linkage_Z, threshold, criterion="distance")
     
 
-def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral', threshold=None, fig_kwargs=None):
-    fig_kwargs = {} if fig_kwargs is None else fig_kwargs
+def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral', threshold=None):
+    """
+    Plots a dendrogram (tree) of the coexpression biclustering above a gene-gene correlation heatmap.
+
+    Parameters
+    ----------
+    coexpression_module : CoexpressionModule
+        Coexpression module to use for lambda values and biclustering modules.
+    cmap : str (default 'Spectral')
+        Matplotlib cmap to use for the gene-gene correlation heatmap
+    threshold : float (default None)
+        Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
+        None defaults to 0.7*max(linkage_Z[:,2]) (corresponds with MATLAB and scipy default).
+    
+    Returns
+    -------
+    (fig, (left_dendrogram_ax, top_dendrogram_ax, heatmap_ax, cbar_ax))
+        Figure and axes.
+    """
 
     lambda_arr = coexpression_module.lambda_arr
     Z = coexpression_module.linkage_Z
@@ -286,6 +344,26 @@ def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectr
 
 
 def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_kw=None, heatmap_kw=None):
+    """
+    Plots a dendrogram (tree) of the coexpression biclustering above an AAR vs gene expression heatmap.
+
+    Parameters
+    ----------
+    coexpression_module : CoexpressionModule
+        Coexpression module to use for lambda values and biclustering modules.
+    sample_gene_r : dict
+        dict producted by read_rdump in splotch.utils - used to obtain spots' AAR labels.
+    fig_kw : dict (default None)
+        Keyword arguments that are passed to pyplot.figure().
+    heatmap_kw : dict (default None)
+        Keyword arguments passed to the heatmap of AARs vs genes.
+
+    Returns
+    -------
+    (fig, (dendrogram_ax, heatmap_ax))
+        Figure and axes.
+    """
+
     lambda_arr = coexpression_module.lambda_arr
     Z = coexpression_module.linkage_Z
     sinfo = coexpression_module.sinfo
@@ -340,21 +418,51 @@ def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_
 
 
 def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
+    """
+    Plots the average [0, 1] normalized gene expression of each module's genes on top of a given sample.
+
+    Parameters
+    ----------
+    coexpression_module : CoexpressionModule
+        Coexpression module to use for lambda values and biclustering modules.
+    library_sample_id : str
+        Sample ID to plot.
+    pseudo_to_actual : boolean (default True)
+        Convert spot coordinates from pseudo hex (Spaceranger default) to actual hex coordinates.
+    circle_size : float (default 10)
+        The point size on the plots corresponding to spots.
+    ncols : int (default 4)
+        Number of columns to plot in the array of modules.
+    fig_kw : dict (default None)
+        Keyword arguments that are passed to pyplot.subplots().
+    module_kw : dict (default None)
+        Keyword arguments passed to the pyplot.scatter() plot of each coexpression module.
+
+    Returns
+    -------
+    (fig, axs)
+        Figure and axes.
+    """
+    
     lambda_arr = coexpression_module.lambda_arr
     Z = coexpression_module.linkage_Z
     sinfo = coexpression_module.sinfo
+    metadata = sinfo['metadata']
     lambda_conditions = coexpression_module.conditions
     condition_level = coexpression_module.condition_level
-    
-    fig_kw = {} if fig_kw is None else fig_kw
-    module_kw = {} if module_kw is None else module_kw
     
     if 'library_sample_id' in sinfo['metadata'].columns:
         sample_col_key = 'library_sample_id'
     else:
         sample_col_key = 'Name'
     
-    metadata = sinfo['metadata']
+    assert library_sample_id in metadata[sample_col_key].tolist(), f"Sample {library_sample_id} was not found in the sinfo metadata"
+    assert metadata[metadata[sample_col_key] == library_sample_id][f'Level {condition_level}'].tolist()[0] in lambda_conditions, \
+        f"The Level {condition_level} condition of sample {library_sample_id} was not a part of the conditions originally used to construct 'coexpression_module' - {lambda_conditions}"
+
+    fig_kw = {} if fig_kw is None else fig_kw
+    module_kw = {} if module_kw is None else module_kw
+    
     f_and_c = np.array(sinfo['filenames_and_coordinates'])
 
     filenames = f_and_c[:, 0]
