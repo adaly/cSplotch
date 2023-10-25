@@ -207,13 +207,17 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
 
 
 class CoexpressionModule:
-    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='complete', linkage_metric='correlation'):
+    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='complete', linkage_metric='correlation', calculate_properties=False):
         self.sinfo = sinfo
         self.gene_summaries_path = gene_summaries_path
         self.conditions = conditions
         self.condition_level = condition_level
         self.linkage_method = linkage_method
         self.linkage_metric = linkage_metric
+
+        if calculate_properties:
+            self.lambda_arr
+            self.linkage_Z
 
     @cached_property
     def lambda_arr(self):
