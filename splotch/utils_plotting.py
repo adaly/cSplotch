@@ -463,7 +463,7 @@ def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id
     assert metadata[metadata[sample_col_key] == library_sample_id][f'Level {condition_level}'].tolist()[0] in lambda_conditions, \
         f"The Level {condition_level} condition of sample {library_sample_id} was not a part of the conditions originally used to construct 'coexpression_module' - {lambda_conditions}"
 
-    fig_kw = {} if fig_kw is None else fig_kw
+    fig_kw = {"figsize": (30,30)} if fig_kw is None else fig_kw
     module_kw = {} if module_kw is None else module_kw
     
     f_and_c = np.array(sinfo['filenames_and_coordinates'])
@@ -505,7 +505,7 @@ def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id
     y = sample_spots['y'].tolist()
 
     n_plots = len(module_list)
-    fig, axs = plt.subplots(ncols=ncols, nrows=np.ceil(n_plots/ ncols).astype(int), figsize=(30,30), **fig_kw)
+    fig, axs = plt.subplots(ncols=ncols, nrows=np.ceil(n_plots/ ncols).astype(int), **fig_kw)
     axs = np.ravel(axs)
 
     for i, module in enumerate(module_list):
@@ -517,8 +517,9 @@ def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id
         fig.colorbar(im, ax=axs[i])
     
     #iterate through the last plots to make them blank
-    num_remaining = ncols - (n_plots % ncols)
-    for idx in range(-1, -(num_remaining+1), -1):
-        axs[idx].set_visible(False)
+    if n_plots % ncols != 0:
+        num_remaining = ncols - (n_plots % ncols)
+        for idx in range(-1, -(num_remaining+1), -1):
+            axs[idx].set_visible(False)
 
     return fig, axs
