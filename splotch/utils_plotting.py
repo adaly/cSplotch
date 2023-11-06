@@ -2,6 +2,7 @@ import os
 import h5py
 import numpy as np
 import pandas as pd
+import numpy as np
 import tqdm
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
@@ -214,7 +215,7 @@ class CoexpressionModule:
     """
     Stores lambda values and biclustering linkage matrix to help visualize coexpression modules
     """
-    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='complete', linkage_metric='correlation', calculate_properties=False):
+    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='average', linkage_metric='euclidean', calculate_properties=False, threshold=None):
         """
         Parameters
         ----------
@@ -234,6 +235,9 @@ class CoexpressionModule:
             See https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
         calculate_properties : boolean (default False)
             Whether to calculate 'lambda_arr' and 'linkage_Z' on initialization.
+        threshold : float (default None)
+            Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
+            None defaults to 0.54*max(linkage_Z[:,2]) (same scheme used by https://www.science.org/doi/10.1126/science.aav9776)
         """
         all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
         assert set(conditions).issubset(set(all_conditions)), \
@@ -244,6 +248,7 @@ class CoexpressionModule:
         self.condition_level = condition_level
         self.linkage_method = linkage_method
         self.linkage_metric = linkage_metric
+        self.threshold = threshold
 
         if calculate_properties:
             self.lambda_arr
@@ -274,27 +279,27 @@ class CoexpressionModule:
         Z = linkage(self.lambda_arr.T, method=self.linkage_method, metric=self.linkage_metric)
         return Z
     
-    def get_gene_modules(self, threshold=None):
+    def save_lambda_arr(self, path):
+        np.save(path, self.lambda_arr)
+
+    def save_linkage_Z(self, path):
+        np.save(path, self.linkage_Z)
+
+    def get_gene_modules(self):
         """
         Finds the co-expression module for each gene using linkage_Z
 
-        Parameters
-        ----------
-        threshold : float (default None)
-            Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
-            None defaults to 0.7*max(linkage_Z[:,2]) (corresponds with MATLAB and scipy default).
-        
         Returns
         -------
         fcluster : ndarray
             Array of size (# of genes, 1), where each element is the module the genes belongs to.
         """
-        if threshold is None:
-            threshold = 0.7*max(self.linkage_Z[:,2]) 
-        return fcluster(self.linkage_Z, threshold, criterion="distance")
+        if self.threshold is None:
+            self.threshold = 0.54*max(self.linkage_Z[:,2]) 
+        return fcluster(self.linkage_Z, self.threshold, criterion="distance")
     
 
-def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral', threshold=None):
+def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral'):
     """
     Plots a dendrogram (tree) of the coexpression biclustering above a gene-gene correlation heatmap.
 
@@ -304,9 +309,6 @@ def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectr
         Coexpression module to use for lambda values and biclustering modules.
     cmap : str (default 'Spectral')
         Matplotlib cmap to use for the gene-gene correlation heatmap
-    threshold : float (default None)
-        Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
-        None defaults to 0.7*max(linkage_Z[:,2]) (corresponds with MATLAB and scipy default).
     
     Returns
     -------
@@ -316,9 +318,10 @@ def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectr
 
     lambda_arr = coexpression_module.lambda_arr
     Z = coexpression_module.linkage_Z
+    threshold = coexpression_module.threshold
 
     if threshold is None:
-        threshold = 0.7*max(Z[:,2]) #default threshold according to scipy (and Matlab)
+        threshold = 0.54*max(Z[:,2])
         
     tdp_dict = dendrogram(Z, no_plot=True)
     leaves = tdp_dict['leaves']
@@ -411,7 +414,10 @@ def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_
     tdp_dict = dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax1)
     leaves = tdp_dict['leaves']
     
-    t = 0.7*max(Z[:,2])
+    if coexpression_module.threshold is None:
+        t = 0.54*max(Z[:,2])
+    else:
+        t = coexpression_module.threshold
     ax1.axhline(t, linestyle="--")
     ax1.axis('off')
 
