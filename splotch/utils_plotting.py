@@ -6,8 +6,10 @@ import numpy as np
 import tqdm
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
+from matplotlib import cm, colors
 import seaborn as sns
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+import scipy.stats
 from splotch.utils import to_stan_variables
 from sklearn.preprocessing import minmax_scale
 from functools import cached_property
@@ -215,7 +217,7 @@ class CoexpressionModule:
     """
     Stores lambda values and biclustering linkage matrix to help visualize coexpression modules
     """
-    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='average', linkage_metric='euclidean', calculate_properties=False, threshold=None):
+    def __init__(self, sinfo, gene_summaries_path, conditions, condition_level=1, linkage_method='average', linkage_metric='cityblock', calculate_properties=False, threshold=None):
         """
         Parameters
         ----------
@@ -227,17 +229,17 @@ class CoexpressionModule:
             List of beta level conditions to filter by.
         condition_level : int
             Level of hierarchical beta variables to filter by.
-        linkage_method : str (default 'complete')
+        linkage_method : str (default 'average')
             The linkage algorithm to use for the biclustering.
             See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
-        linkage_metric : str (default 'correlation')
+        linkage_metric : str (default 'cityblock')
             The metric to use in the linkage algorithm for the biclustering.
             See https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
         calculate_properties : boolean (default False)
             Whether to calculate 'lambda_arr' and 'linkage_Z' on initialization.
         threshold : float (default None)
             Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
-            None defaults to 0.54*max(linkage_Z[:,2]) (same scheme used by https://www.science.org/doi/10.1126/science.aav9776)
+            None defaults to 0.54*max(linkage_Z[:,2]) (same value used by https://www.science.org/doi/10.1126/science.aav9776)
         """
         all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
         assert set(conditions).issubset(set(all_conditions)), \
@@ -248,7 +250,8 @@ class CoexpressionModule:
         self.condition_level = condition_level
         self.linkage_method = linkage_method
         self.linkage_metric = linkage_metric
-        self.threshold = threshold
+
+        self._threshold = threshold
 
         if calculate_properties:
             self.lambda_arr
@@ -274,6 +277,13 @@ class CoexpressionModule:
 
         return lambda_arr
     
+    @property
+    def threshold(self):
+        if self._threshold is not None:
+            return self._threshold
+        
+        return 0.54*max(self.linkage_Z[:,2]) 
+
     @cached_property
     def linkage_Z(self):
         Z = linkage(self.lambda_arr.T, method=self.linkage_method, metric=self.linkage_metric)
@@ -285,6 +295,12 @@ class CoexpressionModule:
     def save_linkage_Z(self, path):
         np.save(path, self.linkage_Z)
 
+    def load_lambda_arr(self, path):
+        self.lambda_arr = np.load(path)
+    
+    def load_linkage_Z(self, path):
+        self.linkage_Z = np.load(path)
+
     def get_gene_modules(self):
         """
         Finds the co-expression module for each gene using linkage_Z
@@ -294,8 +310,6 @@ class CoexpressionModule:
         fcluster : ndarray
             Array of size (# of genes, 1), where each element is the module the genes belongs to.
         """
-        if self.threshold is None:
-            self.threshold = 0.54*max(self.linkage_Z[:,2]) 
         return fcluster(self.linkage_Z, self.threshold, criterion="distance")
     
 
@@ -312,46 +326,39 @@ def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectr
     
     Returns
     -------
-    (fig, (left_dendrogram_ax, top_dendrogram_ax, heatmap_ax, cbar_ax))
+    seaborn.ClusterGrid
         Figure and axes.
     """
 
-    lambda_arr = coexpression_module.lambda_arr
-    Z = coexpression_module.linkage_Z
-    threshold = coexpression_module.threshold
+    clusters = coexpression_module.get_gene_modules()
+    k = len(np.unique(clusters))
+    cluster_cmap = plt.get_cmap('tab20')
+    cNorm  = colors.Normalize(vmin=0, vmax=20)
+    scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cluster_cmap)
 
-    if threshold is None:
-        threshold = 0.54*max(Z[:,2])
-        
-    tdp_dict = dendrogram(Z, no_plot=True)
-    leaves = tdp_dict['leaves']
+    k2col = [scalarMap.to_rgba(np.remainder(i, 20)) for i in range(k)]
 
-    fig = plt.figure(figsize=(5,5))
-    # Add an axes at position rect [left, bottom, width, height]
-    ax1 = fig.add_axes([0.09, 0.1, 0.2, 0.6])
-    dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax1, color_threshold=threshold, orientation='left')
-    ax1.axvline(threshold, linestyle="--")
-    ax1.invert_yaxis()
-    ax1.axis('off')
-
-    ax2 = fig.add_axes([0.3, 0.71, 0.6, 0.2])
-    dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax2, color_threshold=threshold, orientation='top')
-    ax2.axhline(threshold, linestyle="--")
-    ax2.axis('off')
-
-    corr = np.corrcoef(lambda_arr, rowvar=False)
-
-    axmatrix = fig.add_axes([0.3, 0.1, 0.6, 0.6])
-    axcolor = fig.add_axes([0.94, 0.1, 0.02, 0.6])
+    corr = np.corrcoef(coexpression_module.lambda_arr, rowvar=False)
+    cg = sns.clustermap(corr, row_linkage=coexpression_module.linkage_Z, col_linkage=coexpression_module.linkage_Z,
+               row_colors=[k2col[i-1] for i in clusters], col_colors=[k2col[i-1] for i in clusters],
+               cmap=cmap, 
+               cbar_kws={'label':'Pearson correlation', 'ticks':[-1, -0.5, 0, 0.5, 1]},
+               xticklabels=False, 
+               yticklabels=False,
+               center=0
+              )
+    cg.ax_row_dendrogram.set_visible(False)
     
-    sns.heatmap(corr[leaves][:, leaves], yticklabels=False, xticklabels=False, cmap=cmap, vmin=-1, vmax=1, ax=axmatrix, cbar_ax=axcolor, cbar_kws={'label': "Pearson's Correlation Coefficient"})
-    fig.suptitle("Co-expression modules and gene-gene correlation")
-    return fig, (ax1, ax2, axmatrix, axcolor)
+    t = coexpression_module.threshold
+
+    cg.ax_col_dendrogram.axhline(t, color='gray', linestyle='--')
+
+    return cg
 
 
-def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_kw=None, heatmap_kw=None):
+def violin_modules(coexpression_module: CoexpressionModule, sample_gene_r, module_num, x, hue=None, **kwargs):
     """
-    Plots a dendrogram (tree) of the coexpression biclustering above an AAR vs gene expression heatmap.
+    Creates violin plot of the z-score scaled expression levels of the given module, split by the x and hue values.
 
     Parameters
     ----------
@@ -359,16 +366,23 @@ def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_
         Coexpression module to use for lambda values and biclustering modules.
     sample_gene_r : dict
         dict producted by read_rdump in splotch.utils - used to obtain spots' AAR labels.
-    fig_kw : dict (default None)
-        Keyword arguments that are passed to pyplot.figure().
-    heatmap_kw : dict (default None)
-        Keyword arguments passed to the heatmap of AARs vs genes.
+    module_num : int
+        The module to plot
+    x : str
+        One of "AAR", "Level 1", "Level 2" or "Level 3". Dictates the variable to plot on the x axis.
+    hue : str (default None)
+        Can be one of "AAR", "Level 1", "Level 2" or "Level 3". Optionally specifies the colors of the violinplots.
+    kwargs
+        Keyword arguments that are passed to seaborn.violinplot().
+        See https://seaborn.pydata.org/generated/seaborn.violinplot.html.
 
     Returns
     -------
-    (fig, (dendrogram_ax, heatmap_ax))
-        Figure and axes.
+    violinplot axis
     """
+    groups = ['AAR', 'Level 1', 'Level 2', 'Level 3']
+    assert x in groups, f"'x' must be one of {groups}"
+    assert hue is None or hue in groups, f"'hue' must be None or one of {groups}"
 
     lambda_arr = coexpression_module.lambda_arr
     Z = coexpression_module.linkage_Z
@@ -376,10 +390,17 @@ def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_
     lambda_conditions = coexpression_module.conditions
     condition_level = coexpression_module.condition_level
 
-    fig_kw = {} if fig_kw is None else fig_kw
-    heatmap_kw = {} if heatmap_kw is None else heatmap_kw
+    #get avg zscores for each spotr
+    clusters = coexpression_module.get_gene_modules()
 
-    genes = sinfo['genes']
+    cluster_idxs = np.where(clusters == module_num)[0]
+
+    lambda_subset = lambda_arr[:, cluster_idxs]
+
+    zscores = scipy.stats.zscore(lambda_subset, axis=0)
+    avg_zscores = np.mean(zscores, axis=1)
+
+    #obtain metadata information about each spot
     metadata = sinfo['metadata']
     filtered_metadata = metadata[metadata[f'Level {condition_level}'].isin(lambda_conditions)]
 
@@ -392,39 +413,16 @@ def dendrogram_aars(coexpression_module: CoexpressionModule, sample_gene_r, fig_
     aars = np.array([sinfo['annotation_mapping'][idx] for idx in aar_idx])
     spot_aars = aars[spot_idxs]
 
-    all_aars = sinfo['annotation_mapping']
-    aars_by_genes = np.zeros((len(all_aars), len(genes)))
+    data = pd.DataFrame()
+    data['AAR'] = spot_aars
+    data['Count file'] = all_filenames[spot_idxs]
+    data = data.merge(metadata, on='Count file')
+    data.index.name = 'spot_idx'
+    data.index = spot_idxs
+    data['z-score'] = avg_zscores
 
-    for i, aar in enumerate(all_aars):
-        aar_idxs = np.where(spot_aars == aar)[0]
-        aars_by_genes[i, :] = np.mean(lambda_arr[aar_idxs], axis=0)
-
-    aars_by_genes = minmax_scale(aars_by_genes, feature_range=(0,1), axis=0)
-
-    
-    fig = plt.figure(constrained_layout=True, **fig_kw)
-
-    gs = gridspec.GridSpec(nrows=2, ncols=1,
-                       height_ratios=[1, 3],
-                       figure=fig)
-
-    ax1 = plt.subplot(gs[0])
-    ax2 = plt.subplot(gs[1])
-
-    tdp_dict = dendrogram(Z, show_leaf_counts=False, no_labels=True, ax=ax1)
-    leaves = tdp_dict['leaves']
-    
-    if coexpression_module.threshold is None:
-        t = 0.54*max(Z[:,2])
-    else:
-        t = coexpression_module.threshold
-    ax1.axhline(t, linestyle="--")
-    ax1.axis('off')
-
-    sns.heatmap(aars_by_genes[:, leaves], xticklabels=False, yticklabels=all_aars, ax=ax2, **heatmap_kw)
-
-    return fig, (ax1, ax2)
-
+    kwargs = {} if kwargs is None else kwargs
+    return sns.violinplot(data=data, x=x, hue=hue, y='z-score', **kwargs)
 
 def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
     """
