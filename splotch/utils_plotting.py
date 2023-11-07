@@ -11,22 +11,48 @@ import seaborn as sns
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 import scipy.stats
 from splotch.utils import to_stan_variables
+from splotch.utils_sc import grouped_obs_mean_std
 from sklearn.preprocessing import minmax_scale
 from functools import cached_property
 
+# Compute mean expression within a cell group
+def grouped_obs_mean(adata, group_key, layer=None, gene_symbols=None):
+    if layer is not None:
+        getX = lambda x: x.layers[layer]
+    else:
+        getX = lambda x: x.X
+    if gene_symbols is not None:
+        new_idx = adata.var[gene_symbols].values
+    else:
+        new_idx = adata.var_names
+
+    grouped = adata.obs.groupby(group_key, observed=False)
+    
+    out = {}
+    for group, idx in grouped.indices.items():
+        X = getX(adata[idx])
+        out[group] = np.ravel(X.mean(axis=0, dtype=np.float64))    
+    out = pd.DataFrame(out, index=new_idx)
+    return out
+
+def idxs_to_genes(splotch_gene_idxs, gene_idxs_csv_path, gene_csv_col='gene'):
+    gene_idxs = pd.read_csv(gene_idxs_csv_path, index_col=0)
+    
+    return gene_idxs[np.isin(gene_idxs.index, splotch_gene_idxs)][gene_csv_col].tolist()
+
 def oddr_to_pseudo_hex(col, row):
-	y_vis = row
-	x_vis = col * 2
-	if row % 2 == 1:
-		x_vis += 1
-	return  x_vis, y_vis
+    y_vis = row
+    x_vis = col * 2
+    if row % 2 == 1:
+        x_vis += 1
+    return  x_vis, y_vis
 
 def pseudo_hex_to_actual(x, y):
-	return x * 0.5, y * np.sqrt(3) / 2
+    return x * 0.5, y * np.sqrt(3) / 2
 
 def gene_facet_kdes(gene_summary, sinfo, conditions=None, aars=None, cell_types=None, hue="Condition", row=None, col=None, condition_level=1, **kwargs):
     """
-    Plots the distributions of the priors of a given gene, facetted by AAR, Condition, and Cell type
+    Plots the distributions of the priors of a given gene, facetted by AAR, Condition, and Cell type.
 
     Parameters
     ----------
@@ -50,7 +76,7 @@ def gene_facet_kdes(gene_summary, sinfo, conditions=None, aars=None, cell_types=
     condition_level : int (default 1)
         Beta level of the hierarchical model that the specified conditions come from.
     kwargs
-        Keyword arguments that are passed to seaborn.displot().
+        Keyword arguments that are passed to `seaborn.displot()`.
         See https://seaborn.pydata.org/generated/seaborn.displot.html.
 
     Returns
@@ -137,7 +163,7 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
     gene_summary : (hdf5) File object
         Gene summary file object.
     gene_r : dict
-        dict producted by read_rdump in splotch.utils
+        dict producted by `read_rdump` in splotch.utils
     gene_name : str
         Name of gene to display.
     sinfo : Obj
@@ -147,15 +173,15 @@ def lambda_on_sample(gene_summary, gene_r, gene_name, sinfo, library_sample_id, 
     pseudo_to_actual : boolean (default True)
         Transform the coordinates from pseudo hex (as used by Visium), to the actual hex coordinates.
     circle_size : float (default 10)
-        Passed to parameter 's' in seaborn.scatterplot().
+        Passed to parameter 's' in `seaborn.scatterplot()`.
     fig_kw : dict
-        Keyword arguments that are passed to pyplot.subplots().
+        Keyword arguments that are passed to `pyplot.subplots()`.
     aar_kw : dict
-        Keyword arguments that are passed to seaborn.scatterplot() for the AAR plot.
+        Keyword arguments that are passed to `seaborn.scatterplot()` for the AAR plot.
     raw_count_kw : dict
-        Keyword arguments that are passed to seaborn.scatterplot() for the raw count plot.
+        Keyword arguments that are passed to `seaborn.scatterplot()` for the raw count plot.
     lambda_kw : dict
-        Keyword arguments that are passed to seaborn.scatterplot() for the lambda plot.
+        Keyword arguments that are passed to `seaborn.scatterplot()` for the lambda plot.
     
     Returns
     -------
@@ -236,10 +262,10 @@ class CoexpressionModule:
             The metric to use in the linkage algorithm for the biclustering.
             See https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
         calculate_properties : boolean (default False)
-            Whether to calculate 'lambda_arr' and 'linkage_Z' on initialization.
+            Whether to calculate `lambda_arr` and `linkage_Z` on initialization.
         threshold : float (default None)
-            Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
-            None defaults to 0.54*max(linkage_Z[:,2]) (same value used by https://www.science.org/doi/10.1126/science.aav9776)
+            Value to pass to `scipy.cluster.hierarchy.fcluster` with a criterion of 'distance'.
+            None defaults to `0.54*max(linkage_Z[:,2])` (same value used by https://www.science.org/doi/10.1126/science.aav9776)
         """
         all_conditions = sinfo['beta_mapping'][f"beta_level_{condition_level}"]
         assert set(conditions).issubset(set(all_conditions)), \
@@ -284,6 +310,10 @@ class CoexpressionModule:
         
         return 0.54*max(self.linkage_Z[:,2]) 
 
+    @threshold.setter
+    def threshold(self, value):
+        self._threshold = value
+
     @cached_property
     def linkage_Z(self):
         Z = linkage(self.lambda_arr.T, method=self.linkage_method, metric=self.linkage_metric)
@@ -312,7 +342,33 @@ class CoexpressionModule:
         """
         return fcluster(self.linkage_Z, self.threshold, criterion="distance")
     
+    def genes_in_module(self, module_num, gene_idxs_csv_path):
+        """
+        Finds the names of the genes in the given module number.
 
+        Parameters
+        ----------
+        module_num : int
+            Number of the module to obtain genes from.
+        gene_indxs_csv_path : str
+            Path of a csv where the first column is the cSplotch index of a gene,
+            and there is another column titled 'gene' which lists the name of the gene.
+
+        Returns
+        -------
+        genes : list[str]
+            List of names of genes in module `module_num`.
+        """
+        modules = self.get_gene_modules()
+        unique_modules = np.unique(modules)
+
+        assert module_num <= len(unique_modules) and module_num >= 1
+        idxs = np.where(modules == module_num)[0]
+        
+        genes = idxs_to_genes(idxs, gene_idxs_csv_path)
+        return genes
+
+#from splotch.utils_plotting import dendrogram_correlation
 def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectral'):
     """
     Plots a dendrogram (tree) of the coexpression biclustering above a gene-gene correlation heatmap.
@@ -326,32 +382,40 @@ def dendrogram_correlation(coexpression_module: CoexpressionModule, cmap='Spectr
     
     Returns
     -------
-    seaborn.ClusterGrid
+    `seaborn.ClusterGrid`
         Figure and axes.
     """
 
     clusters = coexpression_module.get_gene_modules()
     k = len(np.unique(clusters))
+    
+    #use tab20 as colors for clusters
     cluster_cmap = plt.get_cmap('tab20')
     cNorm  = colors.Normalize(vmin=0, vmax=20)
     scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cluster_cmap)
-
     k2col = [scalarMap.to_rgba(np.remainder(i, 20)) for i in range(k)]
 
     corr = np.corrcoef(coexpression_module.lambda_arr, rowvar=False)
     cg = sns.clustermap(corr, row_linkage=coexpression_module.linkage_Z, col_linkage=coexpression_module.linkage_Z,
                row_colors=[k2col[i-1] for i in clusters], col_colors=[k2col[i-1] for i in clusters],
                cmap=cmap, 
-               cbar_kws={'label':'Pearson correlation', 'ticks':[-1, -0.5, 0, 0.5, 1]},
+               cbar_kws={'label':'Pearson correlation', 'ticks':[-1, 0, 1]},
                xticklabels=False, 
                yticklabels=False,
-               center=0
               )
     cg.ax_row_dendrogram.set_visible(False)
     
-    t = coexpression_module.threshold
+    #set module labels
+    labelled_clusters = [m for m in np.unique(clusters)]
+    sorted_clusters = np.sort(clusters)
+    tick_positions = [0.5 * (np.where(sorted_clusters == m)[0][0] + np.where(sorted_clusters == m)[0][-1]) for m in labelled_clusters]
+    cg.ax_col_colors.set_xticks(tick_positions)
+    cg.ax_col_colors.set_xticklabels(labelled_clusters)
+    cg.ax_col_colors.xaxis.set_tick_params(size=0, pad=-15) # make tick marks invisible
 
-    cg.ax_col_dendrogram.axhline(t, color='gray', linestyle='--')
+    #add purple line for cutoff
+    t = coexpression_module.threshold
+    cg.ax_col_dendrogram.axhline(t, color='purple', linestyle='--')
 
     return cg
 
@@ -365,15 +429,15 @@ def violin_modules(coexpression_module: CoexpressionModule, sample_gene_r, modul
     coexpression_module : CoexpressionModule
         Coexpression module to use for lambda values and biclustering modules.
     sample_gene_r : dict
-        dict producted by read_rdump in splotch.utils - used to obtain spots' AAR labels.
+        dict producted by `read_rdump` in `splotch.utils` - used to obtain spots' AAR labels.
     module_num : int
-        The module to plot
+        The module to plot.
     x : str
         One of "AAR", "Level 1", "Level 2" or "Level 3". Dictates the variable to plot on the x axis.
     hue : str (default None)
         Can be one of "AAR", "Level 1", "Level 2" or "Level 3". Optionally specifies the colors of the violinplots.
     kwargs
-        Keyword arguments that are passed to seaborn.violinplot().
+        Keyword arguments that are passed to `seaborn.violinplot()`.
         See https://seaborn.pydata.org/generated/seaborn.violinplot.html.
 
     Returns
@@ -441,9 +505,9 @@ def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id
     ncols : int (default 4)
         Number of columns to plot in the array of modules.
     fig_kw : dict (default None)
-        Keyword arguments that are passed to pyplot.subplots().
+        Keyword arguments that are passed to `pyplot.subplots()`.
     module_kw : dict (default None)
-        Keyword arguments passed to the pyplot.scatter() plot of each coexpression module.
+        Keyword arguments passed to the `pyplot.scatter()` plot of each coexpression module.
 
     Returns
     -------
@@ -527,3 +591,109 @@ def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id
             axs[idx].set_visible(False)
 
     return fig, axs
+
+
+def plot_submodules(adata, gene_list, obs_celltype, ytick_genes=None, submodule_cutoff=10, threshold=None):
+    """
+    Uses reference scRNA-seq data to find submodules of genes within a set of genes.
+
+    Parameters
+    ----------
+    adata : AnnData object
+        Anndata object with `obs_celltype` as the name of an `obs` column.
+    gene_list : list[str]
+        List of genes to create submodules from.
+    obs_celltype : str
+        Name of the `obs` column in `adata` which indicates the cell type of the observation.
+    ytick_genes : list[str] (default None)
+        Name of specific genes to label on the y axis. `None` will default to evenly spaced gene names.
+    submodule_cutoff : int (default 10)
+        The minimum number of genes a submodule must have in order to color and label it.
+    threshold : float (default None)
+            Value to pass to scipy.cluster.hierarchy.fcluster with a criterion of 'distance'.
+            `None` defaults to `0.54*max(Z[:,2])` (same value used by https://www.science.org/doi/10.1126/science.aav9776)
+
+    Returns
+    -------
+    (g, df_label)
+        seaborn `ClusterGrid` and a `DataFrame` with the submodules assigned to each gene.
+    """
+    
+    gene_intersect = np.intersect1d(adata.var.index, gene_list)
+
+    if len(gene_intersect) != len(gene_list):
+        print(f"{len(gene_list) - len(gene_intersect)} genes from the gene_set not present in the reference adata")
+
+    df_means = grouped_obs_mean(adata[:, gene_intersect], obs_celltype)
+    
+    # Normalize gene expression between 0 and 1 across cell types
+    df_means = df_means / df_means.max(axis=1).values[:, None] 
+
+    # Determine cluster membership by distance cutoff
+    Z = linkage(df_means.values, method='average', metric='cosine')
+    if threshold is None:
+        max_d = 0.54 * max(Z[:,2])
+    else:
+        max_d = threshold
+    clusters = fcluster(Z, max_d, criterion='distance')
+
+    # Adjust figure/font size to account for increased number of cell types assigned by Azimuth
+    if obs_celltype == 'predicted_ids':
+        figsize = (22,10)
+        fontsize = 8
+        bottom = 0.2
+    else:
+        figsize = (10,10)
+        fontsize = 12
+        bottom = 0.25
+
+    # Map all clusters with >= submodule_cutoff genes to a Tab20 color; all others to white.
+    k = len(np.unique(clusters))
+    cmap = plt.get_cmap('tab20')
+    cNorm = colors.Normalize(vmin=0, vmax=20)
+    scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
+    k2col = [scalarMap.to_rgba(np.remainder(i, 20)) if np.sum(clusters==i+1) >= submodule_cutoff else (1,1,1,1) for i in range(k)]
+    color_labels = [str(m) if np.sum(clusters == m) >= submodule_cutoff else '' for m in range(1, k+1)]
+
+    # Render mean expression as a heatmap with rows grouped (and colored) by subcluster
+    vmax = df_means.values.max()
+    g = sns.clustermap(df_means,
+                   row_cluster=True, row_linkage=Z, row_colors=[k2col[i-1] for i in clusters],
+                   col_cluster=False,
+                   vmin=0, vmax=vmax,
+                   cmap='Greys',
+                   figsize=figsize,
+                   dendrogram_ratio=0.1,
+                   cbar_kws={'label':'',  'orientation':'horizontal'})
+    
+    #set module labels
+    labelled_clusters = [m for m in np.unique(clusters) if np.sum(clusters == m) >= submodule_cutoff]
+    sorted_clusters = np.sort(clusters)
+    tick_positions = [0.5 * (np.where(sorted_clusters == m)[0][0] + np.where(sorted_clusters == m)[0][-1]) for m in labelled_clusters]
+    g.ax_row_colors.set_yticks(tick_positions)
+    g.ax_row_colors.set_yticklabels(labelled_clusters)
+    g.ax_row_colors.yaxis.set_tick_params(size=0, pad=-30) # make tick marks invisible
+
+    #label the specific genes as yticks
+    if ytick_genes is not None:
+        reordered_labels = df_means.index[g.dendrogram_row.reordered_ind].tolist()
+        use_labels = ytick_genes
+        use_ticks = [reordered_labels.index(label) + .5 for label in use_labels]
+        g.ax_heatmap.set(yticks=use_ticks, yticklabels=use_labels)
+
+    #threshold dotted line
+    g.row_color_labels = color_labels
+    g.ax_row_dendrogram.axvline(max_d, color='purple', linestyle='--')
+
+    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize = fontsize)
+
+    #reposition
+    g.figure.subplots_adjust(bottom=bottom)
+    x0, _y0, _w, _h = g.cbar_pos
+    g.ax_cbar.set_position([x0, 1, g.ax_row_dendrogram.get_position().width, 0.02])
+    g.ax_cbar.set_title('Scaled mean expression')
+    g.ax_cbar.tick_params(axis='x', length=10)
+
+    df_label = pd.DataFrame({'submodule': clusters}, index=df_means.index)
+
+    return g, df_label

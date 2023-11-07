@@ -56,6 +56,13 @@ def grouped_obs_mean_std(adata, group_key, layer=None, gene_symbols=None):
 		stds[group] = np.ravel(X.todense().std(axis=0, dtype=np.float64))
 	return means, stds
 
+# Preprocess raw snRNA-seq count data for clustering
+def preprocess_snrna(adata):
+	adata_pp = sc.pp.normalize_total(adata, 1e6, copy=True)    # TPM normalization
+
+	# discard lowly expressed genes (<10 TPM max across dataset)
+	adata_pp = adata_pp[:, adata_pp.X.max(axis=0) > 10].copy()
+	return adata_pp
 
 def celltype_beta_priors(st_cell_types, st_gene_list, sc_adata=None, sc_group_key=None,  
 	sc_gene_symbols=None, sc_layer=None, use_raw=True, target_depth=1e4,
