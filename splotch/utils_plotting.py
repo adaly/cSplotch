@@ -486,7 +486,7 @@ def violin_modules(coexpression_module: CoexpressionModule, sample_gene_r, modul
     data['z-score'] = avg_zscores
 
     kwargs = {} if kwargs is None else kwargs
-    return sns.violinplot(data=data, x=x, hue=hue, y='z-score', **kwargs)
+    return sns.violinplot(data=data, x=x, hue=hue, y='Average z-score expression level', **kwargs)
 
 def modules_on_sample(coexpression_module: CoexpressionModule, library_sample_id, pseudo_to_actual=True, circle_size=10, ncols=4, fig_kw=None, module_kw=None):
     """
