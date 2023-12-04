@@ -15,12 +15,12 @@ from matplotlib import pyplot as plt
 
 ##### Files for KEGG analysis #####
 
-KEGG_DIR = '/Users/adaly/Dropbox (Simons Foundation)/cell_segmentation_colon/kegg_files/'
+KEGG_DIR = 'kegg_files'
 GENE_IDS = os.path.join(KEGG_DIR, 'gene_ids.txt')
 KEGG_IDS = os.path.join(KEGG_DIR, 'kegg_ids.txt')
 KEGG_DATABASE = os.path.join(KEGG_DIR, 'kegg_database.txt')
 
-ENS_TO_COMMON = '/Users/adaly/Documents/mouse_colon/Gene_names_mm.txt'
+ENS_TO_COMMON = '../data/Gene_names_mm.txt'
 
 ###################################
 
@@ -241,7 +241,7 @@ def kegg_scores_dotplot(df, df_size):
 							dot_color_df = df, categories_order = cat_order, size_title = size_title, 
 							colorbar_title = 'Overlap',
 							groupby = 'KEGG pathway', vmin = vmin, vmax = vmax, cmap=cmap, 
-							figsize = (3*len(mod_anndata.obs.columns)+4, 2.5*len(mod_anndata.obs.index)+2),
+							figsize = (3*len(mod_anndata.obs.columns)+5, 2.5*len(mod_anndata.obs.index)+2),
 							swap_axes=True)
 	
 	ax_dict['mainplot_ax'].set_yticklabels([i for i in mod_anndata.var_names]) 
@@ -252,7 +252,7 @@ def kegg_scores_dotplot(df, df_size):
 	ax_dict['mainplot_ax'].grid(visible=True, which='major', axis='both')
 	ax_dict['size_legend_ax'].set_facecolor('white')
 	ax_dict['size_legend_ax'].set_aspect(0.6)
-	ax_dict['size_legend_ax'].set_xticklabels(['%.2g' % x for x in labels_axis], fontsize=8)
+	ax_dict['size_legend_ax'].set_xticklabels(['%.2g' % x for x in labels_axis], fontsize=6)
 	ax_dict['color_legend_ax'].set_aspect(0.2)
 	fig = ax_dict['mainplot_ax'].get_figure()
 	
