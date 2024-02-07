@@ -6,11 +6,162 @@ import pandas as pd
 
 import jax.numpy as jnp
 from jax import grad, jit
-from jax.experimental import optimizers
+try:
+  from jax.example_libraries import optimizers
+except ImportError:
+  from jax.experimental import optimizers
 
 from splotch.utils import read_array, read_aar_matrix, detect_tissue_sections, get_tissue_section_spots, filter_arrays
-from splotch.utils_visium import detect_tissue_sections_hex
+from splotch.utils_visium import detect_tissue_sections_hex, get_tissue_section_spots_hex, pseudo_hex_to_true_hex
+from sklearn.preprocessing import LabelEncoder
 
+
+############### ANNDATA-BASED WORKFLOW ###############
+
+# Given an AnnData object containing annotated data from multiple ST arrays, transform coordinates such
+#   that the centroids of the specified annotation categories overlay.
+def anndata_overlay_tissues(adata, array_col, x_col, y_col, annot_col, max_spots_per_tissue=None, 
+	max_iter=10000, align_aars=None, Visium=True):
+	'''
+	Parameters:
+	----------
+	adata: AnnData
+		ST data; expects a 'tissue_label' column in adata.obs if max_spots_per_tissue is None
+	array_col: str
+		column in adata.obs denoting ST array name for each spot
+	x_col: str
+		column in adata.obs denoting array x-coordinate for each spot
+	y_col: str
+		column in adata.obs denoting array y-coordinate for each spot
+	annot_col: str
+		column in adata.obs denoting annotation for each spot
+	max_spots_per_tissue: int
+		maximum number of spots in an individual tissue section (for watershed separation of overlapping tissues)
+	max_iter: int
+		maximum number of iterations for alignment procedure
+	align_aars: list of str or None
+		align tissues by centroids of specified annotation categories, or all annotation categories if None
+	Visium: bool
+		whether the data is Visium formatted (hex-packed spots) or not (Cartesian)
+
+	Returns:
+	-------
+	adata: AnnData
+		input AnnData with added 'x_reg' and 'y_reg' columns in .obs denoting tissue ID for each spot
+	'''
+	
+	# Separate multiple tissue sections on the same array
+	if max_spots_per_tissue is not None:
+		adata = anndata_get_tissue_sections(adata, array_col, x_col, y_col, 
+			max_spots_per_tissue=max_spots_per_tissue, Visium=Visium)
+	elif 'tissue_label' not in adata.obs.columns:
+		logging.info('Warning: no "tissue_label" column in adata.obs; assuming one tissue per array')
+		adata.obs['tissue_label'] = adata.obs[array_col]
+
+	coords_float, annotations, spot_indices = [],[],[]
+	array_filenames = []
+
+	for tissue_idx in adata.obs['tissue_label'].unique():
+		# reserved label for tissues that failed watershed segmentation
+		if tissue_idx == -1:
+			continue
+
+		tissue_spots = adata.obs.index[adata.obs['tissue_label'] == tissue_idx]
+		tissue_coordinates_float = np.vstack((adata.obs.loc[tissue_spots, x_col].values, 
+			adata.obs.loc[tissue_spots, y_col].values))
+		if Visium:
+			tissue_coordinates_float = np.array(list(map(pseudo_hex_to_true_hex, tissue_coordinates_float.T))).T
+		coords_float.append(tissue_coordinates_float)
+		annotations.append(adata.obs.loc[tissue_spots, annot_col])
+		spot_indices.append(tissue_spots.values)
+
+	annotations = np.concatenate(annotations)
+	spot_indices = np.concatenate(spot_indices)
+
+	# Convert annotations to integer indexes
+	le = LabelEncoder()
+	annotations_int = le.fit_transform(annotations)
+	aar_names = list(le.classes_)
+
+	# Mean-center coordinates of each tissue section prior to registration:
+	coords_reg = [c - c.mean(1, keepdims=True) for c in coords_float]
+
+	# Align tissue sections on centroids of desired AARs
+	coords_reg = register_individuals(coords_reg, annotations_int, aar_names, align_aars=align_aars, 
+		max_iter=max_iter)
+
+	# Rotate consensus spot cloud
+	coords_reg = rotate_consensus(coords_reg, annotations_int, aar_names)
+
+	adata.obs['x_reg'] = 0.
+	adata.obs.loc[spot_indices, 'x_reg'] = coords_reg[0,:]
+	adata.obs['y_reg'] = 0.
+	adata.obs.loc[spot_indices, 'y_reg'] = coords_reg[1,:]
+
+	return adata
+
+
+# Given an AnnData containing ST data, label individual tissues on each array
+def anndata_get_tissue_sections(adata, array_col, x_col, y_col, max_spots_per_tissue=2000, Visium=True):
+	'''
+	Parameters:
+	----------
+	adata: AnnData
+		ST data
+	array_col: str
+		column in adata.obs denoting ST array name for each spot
+	x_col: str
+		column in adata.obs denoting array x-coordinate for each spot
+	y_col: str
+		column in adata.obs denoting array y-coordinate for each spot
+	max_spots_per_tissue: int
+		maximum number of spots in an individual tissue section (for watershed separation of overlapping tissues)
+	Visium: bool
+		whether the data is Visium formatted (hex-packed spots) or not (Cartesian)
+
+	Returns:
+	-------
+	adata: AnnData
+		input AnnData with an added 'tissue_label' column in .obs denoting tissue ID for each spot
+	'''
+
+	adata.obs['tissue_label'] = -1
+	max_tissue_idx = 0
+
+	for arr in adata.obs[array_col].unique():
+		array_inds = adata.obs.index[adata.obs[array_col] == arr]
+		array_coordinates_float = np.vstack((adata.obs.loc[array_inds, x_col].values, 
+			adata.obs.loc[array_inds, y_col].values)).T
+
+		# Detect distinct tissue sections
+		try:
+			if not Visium:
+				tissue_section_labels, spots_tissue_section_labeled = \
+					detect_tissue_sections(array_coordinates_float, True, max_spots_per_tissue)
+			else:
+				tissue_section_labels, spots_tissue_section_labeled = \
+					detect_tissue_sections_hex(array_coordinates_float, True, max_spots_per_tissue)
+
+			# Loop over detected tissue sections on the slide
+			for tissue_idx in tissue_section_labels:
+				if not Visium:
+					tissue_section_spots = get_tissue_section_spots(tissue_idx, array_coordinates_float,
+						spots_tissue_section_labeled)
+				else:
+					tissue_section_spots = get_tissue_section_spots_hex(tissue_idx, array_coordinates_float,
+						spots_tissue_section_labeled)
+
+				tissue_inds = array_inds[tissue_section_spots]
+				adata.obs.loc[tissue_inds, 'tissue_label'] = max_tissue_idx + tissue_idx
+
+			max_tissue_idx += max(tissue_section_labels)+1
+		except:
+			logging.warning('Watershedding failed -- dropping array %s' % arr)
+
+	return adata
+
+
+############### TSV FILE WORKFLOW (LEGACY) + HELPER FUNCTIONS ###############
 
 # Accepts a set of annotated data files and transforms coordinates such that centroids of specified
 #   annotation categories overlap.
@@ -143,7 +294,7 @@ def register_individuals(coords, annot_inds, aar_names, align_aars=None, max_ite
 	-----------
 	coords: list of (N_spots_j, 2) ndarrays
 		list of arrays where each entry contains centered coordinates for all spots in array j.
-	annots: (N_spots,) ndarray
+	annot_inds: (N_spots,) ndarray
 		array containing concatenation of all spot annotation indices.
 	aar_names: list of str
 		list mapping AAR indices to names.
@@ -344,8 +495,12 @@ def get_tissue_sections(data_files, aar_files, minimum_spot_val=None,
 
 		# Loop over detected tissue sections on the slide
 		for tissue_idx in tissue_section_labels:
-			tissue_section_spots = get_tissue_section_spots(tissue_idx, array_coordinates_float,
-				spots_tissue_section_labeled)
+			if not Visium:
+				tissue_section_spots = get_tissue_section_spots(tissue_idx, array_coordinates_float,
+					spots_tissue_section_labeled)
+			else:
+				tissue_section_spots = get_tissue_section_spots_hex(tissue_idx, array_coordinates_float,
+					spots_tissue_section_labeled)
 
 			# Get the coordinates & features of the spots assigned to the current tissue section
 			tissue_section_coordinates_str, tissue_section_coordinates_float, tissue_section_features = \
