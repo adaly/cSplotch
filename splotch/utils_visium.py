@@ -70,7 +70,7 @@ def pseudo_hex_to_true_hex(c):
 	bin_oddr_matrix - binary odd-right indexed matrix where 1 indicates annotated spot.
 '''
 def connected_components_hex(bin_oddr_matrix):
-	lmat = np.zeros_like(bin_oddr_matrix)
+	lmat = np.zeros_like(bin_oddr_matrix, dtype=int)
 	lmax = 0
 
 	# Returns immediate neighbors of a coordinate in an odd-right hex grid index.

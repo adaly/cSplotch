@@ -26,6 +26,7 @@ try:
   from jax.example_libraries import optimizers
 except ImportError:
   from jax.experimental import optimizers
+import matplotlib.pyplot as plt
 
 
 def to_numeric(num_str):
@@ -300,7 +301,7 @@ def watershed_tissue_sections(unique_label,labels,max_label):
 
   while True:
     indices = peak_local_max(distance+0.05*numpy.random.rand(tmp_labels.shape[0],
-      tmp_labels.shape[1]),min_distance=min_distance,indices=True,labels=tmp_labels)
+      tmp_labels.shape[1]),min_distance=min_distance,labels=tmp_labels)
 
     # we are done if we get two distinct classes
     if len(indices) == 2:
