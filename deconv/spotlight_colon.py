@@ -1,5 +1,4 @@
 import os
-import json
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -15,42 +14,6 @@ from sklearn.decomposition import NMF
 from sklearn.linear_model import LinearRegression
 from scipy.stats import entropy
 from matplotlib import pyplot as plt
-
-
-#################################
-# 0. Data Processing Functions	#
-#################################
-
-def st_to_anndata(countfiles):
-	'''
-	Parameters:
-	----------
-	countfiles: list of str
-		paths to Splotch-formatted count files containing raw ST counts.
-
-	Returns:
-	-------
-	adata: AnnData
-	'''
-	adata_list = []
-
-	for cfile in countfiles:
-		df_st = pd.read_csv(cfile, header=0, index_col=0, sep='\t')
-		
-		name = Path(cfile).name
-		obs = pd.DataFrame({'array': name, 'coords': df_st.columns},
-			index=pd.Index(np.array([name+'_'+cstr for cstr in df_st.columns])))
-		adata = ad.AnnData(X=df_st.values.T, dtype=np.float32, 
-			obs=obs, var=pd.DataFrame(index=df_st.index))
-		
-		if len(adata.obs) > 0:
-			adata_list.append(adata)
-
-	return ad.concat(adata_list)
-
-def json_to_dict(json_file):
-	with open(json_file) as fh:
-		return json.load(fh)
 
 
 #########################################################################
@@ -250,22 +213,45 @@ def filter_comp_mat(df_ilastik):
 	return df_clean.dropna(axis='columns')
 
 # Return a binary matrix S mapping single-cell types to morphological cell types.
-def S_init(Q, mapping_dict):
-	superclasses = mapping_dict.keys()
-	n_super = len(superclasses)
+def S_init(Q, groupby='pheno_major_cell_types'):
+	ilastik_classes = ['Colonocyte', 'Immune', 'Interstitial', 'Muscle', 'Rest']
+	n_ilastik = len(ilastik_classes)
 	n_ctypes = Q.shape[1]
 
-	S = pd.DataFrame(data=np.zeros((n_super, n_ctypes), dtype=int),
-					index=superclasses,
+	S = pd.DataFrame(data=np.zeros((n_ilastik, n_ctypes), dtype=int),
+					index=ilastik_classes,
 					columns=Q.columns)
+	for i, ct in enumerate(Q.columns):
+		if groupby == 'pheno_major_cell_types':
+			if ct == 'Colonocyte':
+				S.loc['Colonocyte', ct] = 1
+			elif ct == 'Myocyte':
+				S.loc['Muscle', ct] = 1
+			elif ct in ['Cycling', 'Enteroendocrine', 'Goblet', 'Stem', 'TA', 'Tuft']:
+				S.loc['Rest', ct] = 1
+			elif ct in ['Fibroblast', 'Glia', 'Lymphatic', 'Macrophage', 'Mesothelial', 'Neuron', 'Vascular']:
+				S.loc['Interstitial', ct] = 1
+			elif ct in ['B', 'T']:
+				S.loc['Immune', ct] = 1
+			else:
+				raise ValueError('Unknown cell type encountered in AnnData')
 
-	for sc, ctypes in mapping_dict.items():
-		for ct in ctypes:
-			S.loc[sc, ct] = 1
+		elif groupby == 'pheno_cell_types':
+			if ct.startswith('Colonocyte'):
+				S.loc['Colonocyte', ct] = 1
+			elif ct == 'Myocyte':
+				S.loc['Muscle', ct] = 1
+			elif np.any([ct.startswith(snt) for snt in ['Cycling', 'Enteroendocrine', 'Goblet', 'Stem', 'TA', 'Tuft']]):
+				S.loc['Rest', ct] = 1
+			elif np.any([ct.startswith(snt) for snt in ['Fibroblast', 'Glia', 'Lymphatic', 'Macrophage', 'Mesothelial', 'Neuron', 'Vascular']]):
+				S.loc['Interstitial', ct] = 1
+			elif ct in ['B_cell', 'T_cell']:
+				S.loc['Immune', ct] = 1
+			else:
+				raise ValueError('Unknown cell type encountered in AnnData')
 
-	# Ensure valid mapping
-	if np.any(S.sum(axis=1) != 1):
-		raise ValueError('Invalid mapping: each cell type must be mapped to exactly one superclass')
+		else:
+			raise NotImplementedError
 
 	return S
 
@@ -347,150 +333,207 @@ def spotlight_train(H_prime, Q, L, S,
 
 if __name__ == '__main__':
 	parser = ArgumentParser()
-	parser.add_argument('-x', '--st-countfiles', type=str, nargs="+", required=True,
-		help='Path to Splotch-formatted count files (genes x spots TSV) containing ST data to be deconvolved.')
-	parser.add_argument('-d', '--dest-dir', type=str, required=True,
-		help='Directory in which to save output.')
-	parser.add_argument('-f', '--filter-spots-umi', type=int, default=100,
-		help='Filter out spots with less than the specified number of UMIs.')
-
 	parser.add_argument('-t', '--topic-inference', action='store_true',
-		help='Perform topic inference on single-cell data & save results prior to deconvolution.\
-		Only need to do once unless changing single-cell reference and/or markers')
-	parser.add_argument('-s', '--sc-file', type=str,
-		help='Path to file containing HDF5-formatted snRNA-seq raw counts.')
-	parser.add_argument('-c', '--cell-types', type=str,
-		help='Column in AnnData.obs containing cell type annotations.')
-	parser.add_argument('-g', '--gene-names', type=str,
-		help='Column in AnnData.var containing gene names corresponding to those in ST files.')
-	parser.add_argument('-m', '--marker-genes', type=str,
-		help='Path to CSV file with 0th column indicating marker genes (matched to index of AnnData).')
-
-	parser.add_argument('-W', '--W_file', type=str, 
-		help='Path to W matrix computed by "--topic-inference"')
-	parser.add_argument('-Q', '--Q_file', type=str, 
-		help='Path to Q matrix computed by "--topic-inference"')
-
-	parser.add_argument('-e', '--superclass-compositions', type=str, nargs="+", default=None,
-		help='Path to (superclasses x spots) TSV files containing superclass compositions of ST data, if known.')
-	parser.add_argument('-S', '--superclass-mapping', type=str, default=None,
-		help='Path to JSON file mapping superclass names to member cell types in "sc-file".')
+		help='Perform topic inference on single-cell data and save results.')
+	parser.add_argument('-m', '--counts-mode', type=str, default='counts',
+		help='ST data to perform deconvolution on: "counts" or "lambdas"')
+	parser.add_argument('-c', '--constrained', action='store_true',
+		help='Perform SPOTlight with constraint that cell proportions should match Ilastik output')
 	parser.add_argument('-a', '--alpha', type=float, default=1.0,
-		help='Weight given to superclass reconstruction during deconvolution')
+		help='Weight given to Ilastilk reconstruction loss during training')
+	parser.add_argument('-g', '--marker-genes', action='store_true',
+		help='Limit SPOTlight to celltype marker genes only.')
 	args = parser.parse_args()
 
+	data_dir = '/mnt/home/adaly/ceph/datasets/mouse_colon/'
 
-	W_file, Q_file = None, None
+	#snrna_file = os.path.join(data_dir, 'snrna', 'adata_larger_relabeling_after_tsne_jan18.h5ad')
+	#snrna_file = os.path.join(data_dir, 'snrna', 'adata_larger_relabeling_after_tsne_jan18_stem_lgr5.h5ad')
+	snrna_file = os.path.join(data_dir, 'snrna', 'adata_larger_relabeling_after_tsne_Oct2022_stemfiltered.h5ad')
+	groupby = 'pheno_major_cell_types'  # entry in adata.obs denoting cell types
+	#groupby = 'pheno_cell_types'
 
-	# Calculate topic profiles, save W and Q matrices, and exit.
+	meta = pd.read_csv(os.path.join(data_dir, 'Metadata_cSplotch_all.tsv'), header=0, index_col=0, sep='\t')
+
+	# Files in which to save W, Q matrices for ease of future use
+	tag = groupby + ('_markers' if args.marker_genes else '')
+	W_file = os.path.join('data', '%s_W.csv' % tag)
+	Q_file = os.path.join('data', '%s_Q.csv' % tag)
+
+	# Directory in which to save inferred celltype proportions
+	if args.marker_genes:
+		cellcomp_dir = os.path.join(data_dir, 'celltype_annotations_spotlight_constrained_markers')
+	else:
+		cellcomp_dir = os.path.join(data_dir, 'celltype_annotations_spotlight_constrained')
+	#cellcomp_dir = os.path.join(data_dir, 'celltype_annotations_spotlight_constrained_k30')
+
 	if args.topic_inference:
-		if args.sc_file is None or args.cell_types is None:
-			raise ValueError('Must provide "sc-file" and "cell-types" for topic inference.')
-
-		adata = sc.read_h5ad(args.sc_file)
+		# Read in snRNA-seq AnnData
+		adata = sc.read_h5ad(snrna_file)
+		marker_genes = adata.var['gene_ids-0']
 		if adata.raw is not None:
 			adata = adata.raw.to_adata()
 
-		# Limit to marker genes, if provided
-		if args.marker_genes is not None:
-			df_markers = pd.read_csv(args.marker_genes, header=None, index_col=0)
-			markers_in = df_markers.index.intersection(adata.var.index)
-			print('%d of %d marker genes found in single-cell data' % (len(markers_in), len(df_markers)))
-			adata = adata[:, markers_in]
+		# Switch snRNA-seq index to ENSEMBL IDs to match ST
+		adata.var['common'] = adata.var.index
+		adata.var.index = adata.var['gene_ids-0']
 
-		# Switch gene indexing to specified name set.
-		if args.gene_names is not None:
-			adata.var['common'] = adata.var.index.values
-			adata.var.index = adata.var[args.gene_names]
+		# Import an example ST count file and find shared genes
+		if args.counts_mode == 'counts':
+			df_st = pd.read_csv(os.path.join(data_dir, meta['Count file'].iloc[0]), header=0, index_col=0, sep='\t')
+		else:
+			df_st = pd.read_csv(os.path.join(data_dir, 'lambda_means_combined', '%s_lambdas.csv' % meta.index[0]),
+				header=0, index_col=0, sep=',')
+		if args.marker_genes:
+			ensembl_shared = df_st.index.intersection(marker_genes)
+		else:
+			ensembl_shared = df_st.index.intersection(adata.var.index)
 
-		# Read example ST count file and determine set of shared genes
-		df_st = pd.read_csv(args.st_countfiles[0], header=0, index_col=0, sep='\t')
-		genes_shared = df_st.index.intersection(adata.var.index)
-		print('%d genes shared between single-cell and ST' % len(genes_shared))
-
-		# Pre-processing on single-cell count data
-		adata_pp = preprocess_single_cell(adata, genes_shared, args.cell_types)
+		adata_pp = preprocess_single_cell(adata, ensembl_shared, groupby)
 
 		print('Calculating W_0', flush=True)
-		W_0 = W_init(adata_pp, args.cell_types)
+		W_0 = W_init(adata_pp, groupby)
 
 		print('Calculating H_0...', flush=True)
-		H_0 = H_init(adata_pp.obs, args.cell_types)
+		H_0 = H_init(adata_pp.obs, groupby)
 
 		print('Performing NMF...', flush=True)
 		W, H = nmf_infer_topics(adata_pp, W_0, H_0)
-		Q = Q_init(adata_pp.obs, args.cell_types, H.values)
+		Q = Q_init(adata_pp.obs, groupby, H.values)
 
-		W_file = os.path.join(args.dest_dir, args.cell_types+'_W.csv')
-		Q_file = os.path.join(args.dest_dir, args.cell_types+'_Q.csv')
 		W.to_csv(W_file)
 		Q.to_csv(Q_file)
-
-	# Perform deconvolution using pre-computed W and Q matrices.
-	if W_file is None and Q_file is None:
-		if args.W_file is None or args.Q_file is None:
-			raise ValueError('Must provide "W_file" and "Q_file" to perform deconvolution.')
-
-	sdir = args.dest_dir
-	if not os.path.exists(sdir):
-		os.mkdir(sdir)
-
-	W = pd.read_csv(args.W_file, header=0, index_col=0)
-	Q = pd.read_csv(args.Q_file, header=0, index_col=0)
-	genes_shared = W.index
-
-	# Read in data for superclass-informed deconvolution, if provided
-	if args.superclass_mapping is not None:
-		S = S_init(Q, json_to_dict(args.superclass_mapping))
-
-		if args.superclass_compositions is not None:
-			if len(args.superclass_compositions) != len(args.st_countfiles):
-				raise ValueError("Must provide one superclass composition file per count file")
-		superclass_constrained = True
 	else:
-		superclass_constrained = False
+		print('Loading W, Q from previous NMF...', flush=True)
+		W = pd.read_csv(W_file, header=0, index_col=0)
+		Q = pd.read_csv(Q_file, header=0, index_col=0)
+		ensembl_shared = W.index
 
 	# Construct AnnData object containing counts from all ST arrays, then normalize/scale.
-	adata_st = st_to_anndata(args.st_countfiles)
-	adata_st_pp = preprocess_spatial(adata_st, genes_shared, min_counts=args.filter_spots_umi)
+	adata_list = []
 
-	for idx, cfile in enumerate(args.st_countfiles):
-		arr = Path(cfile).name
+	for i in range(len(meta)):
+		row = meta.iloc[i]
+		name = meta.index[i]
+
+		if args.counts_mode == 'counts':
+			cfile = os.path.join(data_dir, row['Count file'])
+			if not os.path.exists(cfile):
+				continue
+			df_st = pd.read_csv(cfile, header=0, index_col=0, sep='\t')
+		else:
+			cfile = os.path.join(data_dir, 'lambda_means_combined', 
+				'%s_lambdas.csv' % name)
+			if not os.path.exists(cfile):
+				continue
+			df_st = pd.read_csv(cfile, header=0, index_col=0, sep=',')
+
+		obs = pd.DataFrame({'array': [name]*len(df_st.columns), 'coords':df_st.columns},
+			index=pd.Index(np.array([name+'_'+cstr for cstr in df_st.columns])))
+		adata = AnnData(X=df_st.values.T, dtype=np.float32, 
+			obs=obs, var=pd.DataFrame(index=df_st.index))
+		if len(adata.obs) > 0:
+			adata_list.append(adata)
+
+	adata_st = anndata.concat(adata_list)
+	adata_st_pp = preprocess_spatial(adata_st, ensembl_shared, args.counts_mode)
+
+	
+	# Perform deconvolution separately for each array, using either NNLS or custom minimization
+	spot_entropies, spot_iloss, spot_rloss = [], [], []
+	S = S_init(Q, groupby)
+	for ct in S.columns:
+		assert S[ct].sum() == 1, 'snRNA-seq cell type %s must be assigned to exactly one Ilastik class'
+
+	for arr in meta.index:
 		adata_array = adata_st_pp[adata_st_pp.obs.array == arr]
 
-		# Infer cell proportions by NNLS
-		if superclass_constrained:
-			compfile = args.superclass_compositions[idx]
-			df_comp = pd.read_csv(compfile, header=0, index_col=0, sep='\t')
-			df_comp = filter_comp_mat(df_comp)  # remove spots with invalid composition & normalize
+		# Load morphological cell proportions predicted by Ilastik
+		comp_file = os.path.join(data_dir, meta.loc[arr, 'Composition file'])
+		if not os.path.exists(comp_file):
+			continue
+		df_ilastik = pd.read_csv(comp_file, header=0, index_col=0, sep='\t')
+		df_ilastik = filter_comp_mat(df_ilastik)  # Remove spots w/invalid composition & norm.
 
-			# Ensure ordering of superclasses matches that in S
-			df_comp = df_comp.loc[S.index]
+		# Limit to coordinates shared between count and composition file
+		common_coords = np.intersect1d(adata_array.obs.coords, df_ilastik.columns)
+		adata_array = adata_array[adata_array.obs.coords.isin(common_coords)]
+		df_ilastik = df_ilastik.loc[:, adata_array.obs.coords]
+		if len(adata_array.obs) == 0:
+			continue
 
-			# Limit to coordinates shared between count and composition file
-			common_coords = np.intersect1d(adata_array.obs.coords, df_comp.columns)
-			adata_array = adata_array[adata_array.obs.coords.isin(common_coords)]
-			df_comp = df_comp.loc[:, adata_array.obs.coords]
-			if len(adata_array.obs) == 0:
-				continue
+		# Infer topic distributions over spots using NNLS (SPOTlight classic)
+		H_prime = nnls_infer_topics(adata_array, W)
 
-			# Infer topic distributions over spots using NNLS (SPOTlight classic)
-			H_prime = nnls_infer_topics(adata_array, W)
-
-			# Refine estimation with superclass constraint
+		# Infer cell proportions either by NNLS or Ilastik-constrained minimization.
+		if args.constrained:
 			P, hist_r, hist_i = spotlight_train(
 				torch.tensor(H_prime.values), torch.tensor(Q.values),
-				torch.tensor(df_comp.values), torch.tensor(S.values),
+				torch.tensor(df_ilastik.values), torch.tensor(S.values),
 				n_iter=100_000, lr=1e-2, alpha=args.alpha)
 			
 			P = pd.DataFrame(data=P, index=Q.columns, columns=H_prime.columns)
 
+			print(arr, hist_r[-1], hist_i[-1], flush=True)
 		else:
-			# Infer topic distributions over spots using NNLS (SPOTlight classic)
-			H_prime = nnls_infer_topics(adata_array, W)
 			P = nnls_infer_proportions(H_prime, Q)
-
 		P_norm = clean_proportions(P)  # Remove noisy contributions & normalize
-		P_norm.to_csv(os.path.join(sdir, arr.split('.')[0]+'.tsv'), sep='\t')
+
+		# Save inferred compositions as cell annotation file
+		lbl = 'alpha0' if not args.constrained else 'alpha%.2f' % args.alpha
+		cellcomp_subdir = os.path.join(cellcomp_dir, lbl)
+		if not os.path.exists(cellcomp_subdir):
+			os.mkdir(cellcomp_subdir)
+		P_norm.to_csv(os.path.join(cellcomp_subdir, arr+'.tsv'), sep='\t')
+
+		# Calculate entropies of spot composition vectors
+		spot_entropies.append(entropy(P_norm, base=P_norm.shape[0], axis=0))
+
+		# Aggregate into morphological superclasses and compare with Ilastik
+		L_pred = S.values @ P_norm.values
+		spot_iloss.append(((df_ilastik - L_pred)**2).mean(axis=0))
+
+		assert P_norm.columns.equals(df_ilastik.columns)
+
+		# Compare reconstructed counts against input counts
+		V_prime_pred = W.values @ (Q.values @ P.values)
+		spot_rloss.append(((adata_array.X.T - V_prime_pred)**2).mean(axis=0))
+
+
+	# Plot histograms over spot entropy and Ilastik loss
+	spot_entropies = np.concatenate(spot_entropies)
+	spot_iloss = np.concatenate(spot_iloss)
+	spot_rloss = np.concatenate(spot_rloss)
+	print(spot_entropies.shape, spot_iloss.shape, spot_rloss.shape)
+
+	lbl = 'alpha0' if not args.constrained else 'alpha%.2f' % args.alpha
+
+	np.save('outputs/spotlight_%s_%s_entropy' % (lbl, args.counts_mode), spot_entropies)
+	np.save('outputs/spotlight_%s_%s_sclass_mse' % (lbl, args.counts_mode), spot_iloss)
+	np.save('outputs/spotlight_%s_%s_reconst_mse' % (lbl, args.counts_mode), spot_rloss)
+
+	fig, ax = plt.subplots(1)
+	ax.hist(spot_entropies, bins=50)
+	ax.set_xlabel('Composition Entropy')
+	ax.set_ylabel('# Spots')
+	plt.savefig('outputs/spotlight_%s_%s_entropy.png' % (lbl, args.counts_mode), 
+		format='PNG', dpi=300)
+	plt.close()
+
+	fig, ax = plt.subplots(1)
+	ax.hist(spot_iloss, bins=50)
+	ax.set_xlabel('Superclass MSE')
+	ax.set_ylabel('# Spots')
+	plt.savefig('outputs/spotlight_%s_%s_sclass_mse.png' % (lbl, args.counts_mode),
+		format='PNG', dpi=300)
+	plt.close()
+
+	fig, ax = plt.subplots(1)
+	ax.hist(spot_rloss, bins=50)
+	ax.set_xlabel('Norm Counts MSE')
+	ax.set_ylabel('# Spots')
+	plt.savefig('outputs/spotlight_%s_%s_reconst_mse.png' % (lbl, args.counts_mode),
+		format='PNG', dpi=300)
+	plt.close()
 
 
