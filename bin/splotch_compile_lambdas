@@ -9,6 +9,7 @@ import pandas as pd
 import scanpy as sc
 import anndata as ad
 
+from scipy import sparse
 from pathlib import Path
 from anndata import AnnData
 from argparse import ArgumentParser
@@ -32,18 +33,22 @@ sinfo = pickle.load(open(os.path.join(args.input_dir, 'information.p'), 'rb'))
 
 # Read in mean lambdas from HDF5 summary files of Splotch posteriors
 gene_lambdas = np.zeros((len(sinfo['genes']), len(sinfo['filenames_and_coordinates'])), dtype=float)
-gene_counts = np.zeros_like(gene_lambdas, dtype=np.int32)
+#gene_counts = np.zeros_like(gene_lambdas, dtype=np.int32)
+gene_counts = sparse.lil_matrix(gene_lambdas.shape, dtype=np.int32)
 
-for pfile in glob.glob(os.path.join(args.output_dir, '*', 'combined_*.hdf5')):
-	gid = int(Path(pfile).stem.split('_')[1])
-	with h5py.File(pfile, 'r') as hf:
-		if np.isnan(hf['lambda']['mean'][:]).any():
-			print('WARNING: non-numeric values detected in lambda means for gene %d (SKIPPING)' % gid)
-			continue
-		gene_lambdas[gid-1, :] = hf['lambda']['mean'][:]
+for gid in range(1, len(sinfo['genes'])+1):
+	pfile = os.path.join(args.output_dir, str(gid//100), 'combined_%d.hdf5' % gid)
+	if os.path.exists(pfile):
+		with h5py.File(pfile, 'r') as hf:
+			if np.isnan(hf['lambda']['mean'][:]).any():
+				print('WARNING: non-numeric values detected in lambda means for gene %d (SKIPPING)' % gid)
+				continue
+			gene_lambdas[gid-1, :] = hf['lambda']['mean'][:]
 
-	dat = read_rdump(os.path.join(args.input_dir, str(gid//100), 'data_%d.R' % gid))
-	gene_counts[gid-1, :] = dat['counts']
+	dfile = os.path.join(args.input_dir, str(gid//100), 'data_%d.R' % gid)
+	if os.path.exists(dfile):
+		dat = read_rdump(dfile)
+		gene_counts[gid-1, :] = dat['counts']
 
 # Obtain AARs for all spots
 dat = read_rdump(glob.glob(os.path.join(args.input_dir, '*', 'data_*.R'))[0])
@@ -72,7 +77,7 @@ if 'celltype_mapping' in sinfo.keys():
 		obs[ctype] = cell_comp_array[:, c]
 
 adata = AnnData(X=gene_lambdas.T, obs=obs, var=pd.DataFrame(index=sinfo['genes']),
-	layers={'X_counts':gene_counts.T}, dtype=np.float32)
+	layers={'X_counts':gene_counts.T.tocsr()}, dtype=np.float32)
 print(adata, flush=True)
 
 adata.write(args.dest_file)
