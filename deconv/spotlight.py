@@ -3,13 +3,13 @@ import json
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import anndata as ad
 
 import torch
 import torch.nn as nn
 from torch.optim import SGD, Adam
 
-import anndata
-from anndata import AnnData
+from pathlib import Path
 from argparse import ArgumentParser
 from sklearn.decomposition import NMF
 from sklearn.linear_model import LinearRegression
@@ -40,8 +40,7 @@ def st_to_anndata(countfiles):
 		name = Path(cfile).name
 		obs = pd.DataFrame({'array': name, 'coords': df_st.columns},
 			index=pd.Index(np.array([name+'_'+cstr for cstr in df_st.columns])))
-		adata = ad.AnnData(X=df_st.values.T, dtype=np.float32, 
-			obs=obs, var=pd.DataFrame(index=df_st.index))
+		adata = ad.AnnData(X=df_st.values.T, obs=obs, var=pd.DataFrame(index=df_st.index))
 		
 		if len(adata.obs) > 0:
 			adata_list.append(adata)
@@ -65,7 +64,7 @@ def preprocess_single_cell(adata, ensembl_list, groupby):
 	# 0.1. Balance the number of cells per cell type
 	celltypes = adata_pp.obs[groupby].unique()
 	min_ct = np.min([np.sum(adata_pp.obs[groupby]==ct) for ct in celltypes])
-	adata_pp = anndata.concat([
+	adata_pp = ad.concat([
 		sc.pp.subsample(adata_pp[adata_pp.obs[groupby]==ct], n_obs=min_ct, copy=True) 
 		for ct in celltypes])
 
@@ -435,8 +434,8 @@ if __name__ == '__main__':
 	if not os.path.exists(sdir):
 		os.mkdir(sdir)
 
-	W = pd.read_csv(args.W_file, header=0, index_col=0)
-	Q = pd.read_csv(args.Q_file, header=0, index_col=0)
+	W = pd.read_csv(W_file, header=0, index_col=0)
+	Q = pd.read_csv(Q_file, header=0, index_col=0)
 	genes_shared = W.index
 
 	# Read in data for superclass-informed deconvolution, if provided
