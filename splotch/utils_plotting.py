@@ -295,13 +295,20 @@ class CoexpressionModule:
 
         num_genes = len(self.sinfo['genes'])
 
-        lambda_arr = np.zeros((len(spot_idxs), num_genes))
-
+        lambda_arr = [] #num genes x num_spots
+        included_gene_idxs = []
         for gene_idx in tqdm.trange(1, num_genes + 1, desc="Reading gene summaries for 'lambda_arr'"):
-            gene_summary = h5py.File(os.path.join(self.gene_summaries_path, str(gene_idx // 100), f'combined_{gene_idx}.hdf5'))
-            lambda_arr[:, gene_idx - 1] = gene_summary['lambda']['mean'][spot_idxs]
+            summary_path = os.path.join(self.gene_summaries_path, str(gene_idx // 100), f'combined_{gene_idx}.hdf5')
 
-        return lambda_arr
+            if os.path.exists(summary_path):
+                gene_summary = h5py.File(summary_path)
+                lambda_arr.append(gene_summary['lambda']['mean'][spot_idxs])
+                included_gene_idxs.append(gene_idx)
+
+        lambda_arr = np.asarray(lambda_arr).T
+
+        self.included_gene_idxs = included_gene_idxs
+        return lambda_arr #num spots x num genes
     
     @property
     def threshold(self):
