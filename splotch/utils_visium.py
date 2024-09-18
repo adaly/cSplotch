@@ -106,7 +106,7 @@ def connected_components_hex(bin_oddr_matrix):
 
 	# Default recursion limit is 999 -- if there are more than 1k spots on grid we want to
 	# allow for all of them to be traversed.
-	sys.setrecursionlimit(int(np.sum(bin_oddr_matrix)))
+	sys.setrecursionlimit(np.size(bin_oddr_matrix))
 
 	# Determine neighborhood of each unlabled spot, assign a label, and proceed.
 	for y in range(bin_oddr_matrix.shape[0]):
