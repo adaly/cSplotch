@@ -406,9 +406,10 @@ def read_array_metadata(metadata,filename,n_levels):
   return array_levels
 
 def detect_tissue_sections(coordinates,check_overlap=False,threshold=120):
-  # let us represent the array as a 40-by-40 grid
-  # TODO: does this work for the new slide design?
-  array = numpy.zeros((40,40))
+  # let us represent the array as an m x n grid
+  # get max row and column value as ints
+  max_coordinates = numpy.rint(coordinates.max(axis=0)).astype(int)
+  array = numpy.zeros(max_coordinates + 1)
 
   # let us discretize spot locations and place them on the array
   for coord in coordinates:
