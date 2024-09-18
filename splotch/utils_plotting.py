@@ -652,7 +652,13 @@ def plot_submodules(adata, gene_list, obs_celltype, ytick_genes=None, submodule_
     cmap = plt.get_cmap('tab20')
     cNorm = colors.Normalize(vmin=0, vmax=20)
     scalarMap = cm.ScalarMappable(norm=cNorm, cmap=cmap)
-    k2col = [scalarMap.to_rgba(np.remainder(i, 20)) if np.sum(clusters==i+1) >= submodule_cutoff else (1,1,1,1) for i in range(k)]
+    k2col, color_idx = [],0
+    for i in range(k):
+        if np.sum(clusters==i+1) >= submodule_cutoff:
+            k2col.append(scalarMap.to_rgba(np.remainder(color_idx, 20)))
+            color_idx += 1 
+        else:
+            k2col.append((1,1,1,1))
     color_labels = [str(m) if np.sum(clusters == m) >= submodule_cutoff else '' for m in range(1, k+1)]
 
     # Render mean expression as a heatmap with rows grouped (and colored) by subcluster
