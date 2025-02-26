@@ -28,6 +28,9 @@ from splotch.utils_visium import unique_annots_loupe, read_annot_matrix_loupe, \
   get_spot_adjacency_matrix_hex
 from splotch.utils_sc import celltype_beta_priors
 
+# Values mapped to NaN by Pandas<=1.5.3; Pandas>2 maps "None" to NaN as well, which we may want to allow as an annotation category in sample metadata (e.g., Onset)
+pd_nan_values = ['','#N/A','#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN', '-nan', '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN', 'n/a', 'nan', 'null']
+
 def generate_splotch_inputs(count_files,metadata_file,
                             maximum_number_of_spots_per_tissue_section,
                             median_sequencing_depth,
@@ -52,7 +55,7 @@ def generate_splotch_inputs(count_files,metadata_file,
 
   # read metadata file
   logging.info('Reading metadata')
-  metadata = pd.read_csv(metadata_file,header=0,sep='\t')
+  metadata = pd.read_csv(metadata_file,header=0,sep='\t',keep_default_na=False,na_values=pd_nan_values)
 
   if Visium and not 'Spaceranger output' in metadata.columns:
     logging.critical('A "Spaceranger output" column is required in metadata for Visium samples!')

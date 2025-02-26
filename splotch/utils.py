@@ -507,6 +507,32 @@ def generate_W_sparse(N,W_n,W):
 
     return W_sparse
 
+# Takes an R-formatted list of adjacent pairs (1-indexed) and converts to (indices, indtr) representation
+# (for faster sparse matrix multiplication within CAR component of Stan Splotch model).
+def sparse_to_csr_indptr(W_sparse, N_spots):
+    '''
+    Parameters:
+    ----------
+    W_sparse: (k, 2) ndarray
+        sparse representation of upper-triangular adjacency matrix (row_inds, col_inds)
+    N_spots: int
+        number of spots (width of dense adjacency matrix)
+    Returns:
+    -------
+    V: (2*k,) ndarray
+        column indices for CSR representation of SYMMETRIC adjacency matrix
+    U: (n+1,) ndarray
+        pointer vector denoting rows of nonzero elements of adjacency matrix
+        (see: https://stackoverflow.com/questions/52299420/scipy-csr-matrix-understand-indptr)
+    '''
+    # The CSR-speedup version expects a symmetric sparse encoding of the adjacency matrix
+    r_inds = numpy.concatenate((W_sparse[:,0]-1, W_sparse[:,1]-1))  
+    c_inds = numpy.concatenate((W_sparse[:,1]-1, W_sparse[:,0]-1))
+    
+    data = numpy.ones_like(r_inds, dtype=np.int64)
+    cmat = csr_matrix((data, (r_inds, c_inds)), shape=(N_spots, N_spots))
+    return cmat.indices+1, cmat.indptr+1
+
 def generate_column_labels(files_list,coordinates_list):
   filenames = [[files_list[r]]*len(coordinates_list[r]) \
     for r in range(0,len(coordinates_list))]
@@ -600,11 +626,18 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
       eigval_list.append(evs)
     data['eig_values'] = numpy.sort(numpy.concatenate(eigval_list))
 
+    # Decomposition for speedup of CAR calculation in newer version of Splotch/cSplotch model:
+    V, U = sparse_to_csr_indptr(data['W_sparse'], numpy.sum(data['N_spots']))
+    data['U'] = U 
+    data['V'] = V
+
   else:
     data['W_n'] = []
     data['W_sparse'] = numpy.zeros((0,0))
     data['D_sparse'] = []
     data['eig_values'] = []
+    data['U'] = []
+    data['V'] = []
 
   return data
 
