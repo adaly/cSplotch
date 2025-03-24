@@ -78,6 +78,8 @@ if 'celltype_mapping' in sinfo.keys():
 
 adata = AnnData(X=gene_lambdas.T, obs=obs, var=pd.DataFrame(index=sinfo['genes']),
 	layers={'X_counts':gene_counts.T.tocsr()}, dtype=np.float32)
+adata.uns['scaling_factor'] = sinfo['scaling_factor']
+
 print(adata, flush=True)
 
 adata.write(args.dest_file)
