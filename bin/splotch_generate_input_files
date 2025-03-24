@@ -25,7 +25,7 @@ from splotch.utils import get_variable_mappings, watershed_tissue_sections, \
   read_cellcomp_matrix
 from splotch.utils_visium import unique_annots_loupe, read_annot_matrix_loupe, \
   detect_tissue_sections_hex, get_tissue_section_spots_hex, \
-  get_spot_adjacency_matrix_hex
+  get_spot_adjacency_matrix_hex, visium_find_position_file
 from splotch.utils_sc import celltype_beta_priors
 
 # Values mapped to NaN by Pandas<=1.5.3; Pandas>2 maps "None" to NaN as well, which we may want to allow as an annotation category in sample metadata (e.g., Onset)
@@ -36,7 +36,7 @@ def generate_splotch_inputs(count_files,metadata_file,
                             median_sequencing_depth,
                             n_levels,minimum_sequencing_depth,
                             output_directory,car,zi,nb,
-                            Visium=False,compositional=False,
+                            Visium=False,compositional=False,hd_binning=None,
                             sc_adata=None,sc_group_key=None,sc_gene_symbols=None):
 
   # initialize a bunch of variables for keeping tissue section specific data
@@ -52,6 +52,8 @@ def generate_splotch_inputs(count_files,metadata_file,
   W_n_list = []
   files_list = []
   cellcomp_matrix_list = []
+  # keep track of whether we're dealing with HD Visium data
+  HD = hd_binning is not None
 
   # read metadata file
   logging.info('Reading metadata')
@@ -159,12 +161,7 @@ def generate_splotch_inputs(count_files,metadata_file,
           sys.exit(1)
       else:
         spaceranger_dir = metadata[metadata['Count file'] == filename]['Spaceranger output'].values[0]
-        # Spaceranger >= 2.0
-        if os.path.exists(os.path.join(spaceranger_dir, "outs/spatial/tissue_positions.csv")):
-          position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions.csv")
-        # Spaceranger <= 1.9
-        else:
-          position_file = os.path.join(spaceranger_dir, "outs/spatial/tissue_positions_list.csv")
+        position_file = visium_find_position_file(spaceranger_dir, hd_binning)
         array_aar_matrix = read_annot_matrix_loupe(annotation_filename, position_file, aar_names)
 
       # read spot compositions
@@ -215,7 +212,7 @@ def generate_splotch_inputs(count_files,metadata_file,
       logging.info('Detecting tissue sections on the array')
       # detect distinct tissue sections on the slide and
       # try to separate overlapping tissue sections
-      if not Visium:
+      if not Visium or HD:
         tissue_section_labels,spots_tissue_section_labeled = \
           detect_tissue_sections(array_coordinates_float,True,maximum_number_of_spots_per_tissue_section)
       else:
@@ -226,7 +223,7 @@ def generate_splotch_inputs(count_files,metadata_file,
       for tissue_idx in tissue_section_labels:
         # get the indices of the spots assigned to the current
         # tissue section
-        if not Visium:
+        if not Visium or HD:
           tissue_section_spots = get_tissue_section_spots(tissue_idx,array_coordinates_float,
                                                           spots_tissue_section_labeled)
         else:
@@ -251,14 +248,14 @@ def generate_splotch_inputs(count_files,metadata_file,
         if car:
           # get the spot adjacency matrix of the spots
           # on the current tissue section
-          if not Visium:
-            tissue_section_W = get_spot_adjacency_matrix(tissue_section_coordinates_float)
+          if not Visium or HD:
+            tissue_section_W = get_spot_adjacency_matrix(tissue_section_coordinates_float, is_hd=HD)
           else:
             tissue_section_W = get_spot_adjacency_matrix_hex(tissue_section_coordinates_float)
-  
+
           # CAR prior will break if there are spots without neighbors,
           # thus let us get rid of those spots
-          connected_spots = tissue_section_W.sum(0) > 0
+          connected_spots = numpy.array(tissue_section_W.sum(0) > 0).squeeze()
 
           if compositional:
             tissue_section_coordinates_str,tissue_section_coordinates_float,tissue_section_counts,\
@@ -388,8 +385,9 @@ if __name__ == '__main__':
                       help='minimum number of UMIs per spot (default is 100)')
   parser.add_argument('-t','--t',action='store',
                       dest='maximum_number_of_spots_per_tissue_section',type=float,
-                      required=False,default=2000.0,
-                      help='number of spots threshold for identifying overlapping tissue sections (default is 2000)')
+                      required=False,default=None,
+                      help='number of spots threshold for identifying overlapping tissue sections \
+                      (defaults: Visium - 4992; VisiumHD - 200k; STv1 - 2000)')
   parser.add_argument('-n','--no-car',action='store_false',dest='car',required=False,
                       help='disable the conditional autoregressive prior')
   parser.add_argument('-z','--no-zi',action='store_false',dest='zi',required=False,
@@ -402,8 +400,12 @@ if __name__ == '__main__':
                       help='output_directory (default is data)')
   parser.add_argument('-v','--version',action='version',
                       version='%s %s'%(parser.prog,splotch.__version__))
-  parser.add_argument('-V','--Visium',action='store_true',required=False,
+  parser.add_argument('-V','--Visium',action='store_true',required=False,default=True,
                       help='output in Visium format (default is standard ST)')
+  parser.add_argument('-B','--hd-binning', type=str, required=False, default=None,
+                      help='name of binning to use (Visium HD only)')
+  parser.add_argument('-S','--st-v1', action='store_true', required=False,
+                      help='output in STv1 format')
   parser.add_argument('-p','--compositional',action='store_true',dest='compositional',required=False,
                       help='Employ per-spot compositional labels to deconvolve contributions of individual cell types.')
   parser.add_argument('-e','--empirical-priors',type=str,default=None,required=False,
@@ -418,6 +420,29 @@ if __name__ == '__main__':
   parser.set_defaults(nb=False)
   options = parser.parse_args()
 
+  # Visium option is default now; only turn off if st_v1 specified
+  if options.st_v1:
+    options.Visium = False
+
+  if options.Visium:
+    if options.hd_binning is None:
+      logging.info('Visium (SD)')
+    else:
+      logging.info('Visium (HD)')
+  else:
+    logging.info('STv1')
+
+  # Defaults for max spots/tissue:
+  if options.maximum_number_of_spots_per_tissue_section is None:
+    if options.Visium:
+      if options.hd_binning is None:
+        options.maximum_number_of_spots_per_tissue_section = 4992
+      else:
+        options.maximum_number_of_spots_per_tissue_section = 200000
+    else:
+      options.maximum_number_of_spots_per_tissue_section = 2000
+  logging.info('Maximum %d spots per tissue section' % options.maximum_number_of_spots_per_tissue_section)
+
   # check that the supplied read count files exist
   for filename in options.count_files:
     if not os.path.isfile(filename):
@@ -425,7 +450,7 @@ if __name__ == '__main__':
       sys.exit(1)
   # check that the supplied metadata file exists
   if not os.path.isfile(options.metadata_file):
-    logging.critical('Metadata file %s does not exist!'%(metadata_file))
+    logging.critical('Metadata file %s does not exist!'%(options.metadata_file))
     sys.exit(1)
 
   # read single-cell AnnData file (if provided) and check for group key
@@ -453,5 +478,6 @@ if __name__ == '__main__':
                           options.nb,
                           options.Visium,
                           options.compositional,
+                          options.hd_binning,
                           sc_adata, options.sc_group_key, options.sc_gene_symbols)
   sys.exit(0)

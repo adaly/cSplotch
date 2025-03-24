@@ -15,6 +15,7 @@ import gzip
 from pathlib import Path
 
 import splotch
+from splotch.utils import write_unified_hdf5
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
@@ -25,6 +26,17 @@ def st_prepare_count_files(count_files, suffix, minimum_detection_rate):
 
   prepare_count_files(count_files, frames, suffix, minimum_detection_rate)
 
+def read_filtered_feature_matrix(matrix_dir):
+  mat = scipy.io.mmread(os.path.join(matrix_dir, "matrix.mtx.gz"))
+
+  features_path = os.path.join(matrix_dir, "features.tsv.gz")
+  feature_ids = [row[0] for row in csv.reader(gzip.open(features_path, "rt"), delimiter="\t")]
+
+  barcodes_path = os.path.join(matrix_dir, "barcodes.tsv.gz")
+  barcodes = [row[0] for row in csv.reader(gzip.open(barcodes_path, "rt"), delimiter="\t")]
+
+  return mat, feature_ids, barcodes
+
 def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate):
   # Assemble count matrix dataframe from components in output directories:
   frames = []
@@ -32,13 +44,7 @@ def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate)
   for srd in spaceranger_dirs:
     
     matrix_dir = os.path.join(srd, "outs/filtered_feature_bc_matrix/")
-    mat = scipy.io.mmread(os.path.join(matrix_dir, "matrix.mtx.gz"))
-
-    features_path = os.path.join(matrix_dir, "features.tsv.gz")
-    feature_ids = [row[0] for row in csv.reader(gzip.open(features_path, "rt"), delimiter="\t")]
-
-    barcodes_path = os.path.join(matrix_dir, "barcodes.tsv.gz")
-    barcodes = [row[0] for row in csv.reader(gzip.open(barcodes_path, "rt"), delimiter="\t")]
+    mat, feature_ids, barcodes = read_filtered_feature_matrix(matrix_dir)
 
     # Read spot position file
     if os.path.exists(os.path.join(srd, "outs/spatial/tissue_positions.csv")):
@@ -60,8 +66,34 @@ def visium_prepare_count_files(spaceranger_dirs, suffix, minimum_detection_rate)
     count_files.append(os.path.join(srd, Path(srd).name))
 
   prepare_count_files(count_files, frames, suffix, minimum_detection_rate)
+
+def visium_prepare_count_files_hd(spaceranger_dirs, suffix, minimum_detection_rate, binning):
+  # Assemble count matrix dataframe from components in output directories:
+  frames = []
+  count_files = []
+  for srd in spaceranger_dirs:
+    
+    matrix_dir = os.path.join(srd, "outs", "binned_outputs", binning, "filtered_feature_bc_matrix")
+    mat, feature_ids, barcodes = read_filtered_feature_matrix(matrix_dir)
+
+    # Read spot position file
+    positions_path = os.path.join(srd, 'outs', 'binned_outputs', binning, 'spatial', 'tissue_positions.parquet')
+    positions = pd.read_parquet(positions_path)
+    positions = positions.set_index('barcode')
+
+    positions_list = []
+    for b in barcodes:
+      xcoor = positions.loc[b,'array_col']
+      ycoor = positions.loc[b,'array_row']
+      positions_list.append('%d_%d' % (xcoor, ycoor))
+
+    df = pd.DataFrame.sparse.from_spmatrix(mat, index=feature_ids, columns=positions_list)
+    frames.append(df)
+    count_files.append(os.path.join(srd, Path(srd).name))
+
+  prepare_count_files(count_files, frames, suffix, minimum_detection_rate, is_hd=True)
   
-def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_detection_rate=0.02):
+def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_detection_rate=0.02, is_hd=False):
   # Construct the multi index
   for filename,frame in zip(count_files,frames):
   	frame.columns = pd.MultiIndex.from_product([[filename],frame.columns],names=['Sample','Coordinate'])
@@ -71,7 +103,10 @@ def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_dete
   result = pd.concat(frames,copy=False,axis=1,sort=True)
   logging.info('We have detected %d genes'%(result.shape[0]))
   # fill NaNs with zeros
-  result = result.fillna(0).astype(int)
+  if hasattr(result, 'sparse'):
+    result = result.fillna(0).astype(pd.SparseDtype(int))
+  else:
+    result = result.fillna(0).astype(int)
   
   # discard lowly expressed genes
   result = result[((result > 0).sum(axis=1)/float(result.shape[1])) > minimum_detection_rate]
@@ -82,7 +117,10 @@ def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_dete
   
   # write the modified count files back to the disk
   for filename in result.columns.levels[0]:
-    result[filename].to_csv(filename+suffix,sep='\t',index=True)
+    if not is_hd:
+      result[filename].to_csv(filename+suffix,sep='\t',index=True,compression='gzip')
+    else:
+      write_unified_hdf5(filename+suffix,result[filename])
 
 if __name__ == '__main__':
 
@@ -90,20 +128,32 @@ if __name__ == '__main__':
     description='A script for preparing count files for Splotch')
   parser.add_argument('-c','--count_data',action='store',
                       dest='count_data',type=str,nargs='+',
-                      required=True,help='list of read count filenames')
+                      required=True,help='list of Spaceranger outputs (Visium/VisiumHD) or read count filenames (STv1)')
   parser.add_argument('-s','--suffix',action='store',
                       dest='suffix',type=str,required=False,
-                      default='.unified.tsv',
-                      help='suffix to be added to the output filenames (default is .unified.tsv)')
+                      default='.unified.tsv.gz',
+                      help='suffix to be added to the output filenames (default is .unified.tsv.gz, or .unified.hdf5 for HD data)')
   parser.add_argument('-d','--minimum_detection_rate',action='store',
                       dest='minimum_detection_rate',type=float,required=False,
                       default=0.02,help='minimum detection rate (default is 0.02)')
   parser.add_argument('-v','--version',action='version',
                       version='%s %s'%(parser.prog,splotch.__version__))
-  parser.add_argument('-V','--Visium',action='store_true',required=False,
-                      help='output in Visium format (default is standard ST)')
+  parser.add_argument('-V','--Visium', action='store_true', required=False, default=True,
+                      help='count data in Visium format (default)')
+  parser.add_argument('-B','--hd-binning', type=str, required=False, default=None,
+                      help='name of binning to use (Visium HD only)')
+  parser.add_argument('-S','--st-v1', action='store_true', required=False,
+                      help='count data in STv1 format')
 
   options = parser.parse_args()
+
+  # Visium option is default now; only turn off if st_v1 specified
+  if options.st_v1:
+    options.Visium = False
+
+  # default to sparse storage of count data in hdf5 file for HD Visium (much more efficient in time/storage)
+  if options.suffix.endswith('.tsv.gz') and options.hd_binning is not None:
+    options.suffix = options.suffix.replace('tsv.gz', 'hdf5')
 
   # check that the supplied read count files exist
   for filename in options.count_data:
@@ -120,9 +170,12 @@ if __name__ == '__main__':
     logging.critical('Minimum detection rate should be between 0 and 1!')
     sys.exit(1)
 
-  if not options.Visium:
+  if options.st_v1:
     st_prepare_count_files(options.count_data, options.suffix, options.minimum_detection_rate)
   else:
-    visium_prepare_count_files(options.count_data, options.suffix, options.minimum_detection_rate)
+    if options.hd_binning is None:
+      visium_prepare_count_files(options.count_data, options.suffix, options.minimum_detection_rate)
+    else:
+      visium_prepare_count_files_hd(options.count_data, options.suffix, options.minimum_detection_rate, options.hd_binning)
 
   sys.exit(0)

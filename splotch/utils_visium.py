@@ -16,17 +16,35 @@ def unique_annots_loupe(loupe_files):
 	for fh in loupe_files:
 		df = pd.read_csv(fh, header=0, sep=",")
 		for a in df.iloc[:,1].values:
-			if isinstance(a,str) and len(a)>0 and a.lower() != "undefined":
+			a = str(a)
+			if len(a)>0 and a.lower() != "undefined":
 				all_annots.append(a)
 
 	return sorted(list(set(all_annots)))
+
+def visium_find_position_file(spaceranger_dir, hd_binning=None):
+	# Visium HD
+	if hd_binning is not None:
+		position_file = os.path.join(spaceranger_dir, 'outs', 'binned_outputs', hd_binning, 'spatial', 
+			'tissue_positions.parquet')
+	else:
+		# Spaceranger >= 2.0
+		if os.path.exists(os.path.join(spaceranger_dir, 'outs', 'spatial', 'tissue_positions.csv')):
+			position_file = os.path.join(spaceranger_dir, 'outs', 'spatial', 'tissue_positions.csv')
+		# Spaceranger <= 1.9
+		else:
+			position_file = os.path.join(spaceranger_dir, 'outs', 'spatial', 'tissue_positions_list.csv')
+	return position_file
 
 # Annotataion matrix from Loupe annotation file
 def read_annot_matrix_loupe(loupe_file, position_file, unique_annots):
 	annots = pd.read_csv(loupe_file, header=0, sep=",")
 
-	# Spaceranger <=1.9 has no header row
-	if position_file.endswith('_list.csv'):
+	if position_file.endswith('.parquet'):
+		positions = pd.read_parquet(position_file)
+		positions = positions.set_index('barcode')
+	elif position_file.endswith('_list.csv'):
+		# Spaceranger <=1.9 has no header row
 		positions = pd.read_csv(position_file, index_col=0, header=None,
 		  names=["in_tissue", "array_row", "array_col", "pixel_row", "pixel_col"])
 	else:
@@ -39,9 +57,10 @@ def read_annot_matrix_loupe(loupe_file, position_file, unique_annots):
 		xcoor = positions.loc[b,'array_col']
 		ycoor = positions.loc[b,'array_row']
 		positions_list.append('%d_%d' % (xcoor, ycoor))
+		a = str(annots.iloc[i,1])
 
-		if annots.iloc[i,1] in unique_annots:
-			annot_matrix[unique_annots.index(annots.iloc[i,1]),i] = 1
+		if a in unique_annots:
+			annot_matrix[unique_annots.index(a),i] = 1
 
 	annot_frame = pd.DataFrame(annot_matrix, index=unique_annots, columns=positions_list)
 

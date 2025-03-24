@@ -8,7 +8,7 @@ import numpy
 import h5py
 import pandas as pd
 import scipy.stats
-from scipy.sparse import block_diag, diags, csr_matrix
+from scipy.sparse import block_diag, diags, csr_matrix, coo_matrix
 from scipy.sparse.linalg import eigsh
 from scipy.ndimage.measurements import label
 from scipy.ndimage.morphology import distance_transform_edt
@@ -28,6 +28,43 @@ except ImportError:
   from jax.experimental import optimizers
 import matplotlib.pyplot as plt
 
+def write_unified_hdf5(outfile, df_sparse, compression='gzip', compression_opts=9):
+  hf = h5py.File(outfile, 'w')
+  
+  # Define the data type for variable-length strings
+  dt = h5py.string_dtype(encoding='utf-8')
+  # spot names (x_y)
+  spots = hf.create_dataset('spots', (len(df_sparse.columns),), dtype=dt)
+  spots[:] = df_sparse.columns.values
+  # gene names
+  genes = hf.create_dataset('genes', (len(df_sparse.index),), dtype=dt)
+  genes[:] = df_sparse.index.values
+  
+  # sparse count matrix 
+  cmat = df_sparse.sparse.to_coo()
+  hf.create_dataset('rows', data=cmat.row, compression=compression, compression_opts=compression_opts)
+  hf.create_dataset('cols', data=cmat.col, compression=compression, compression_opts=compression_opts)
+  hf.create_dataset('values', data=cmat.data, compression=compression, compression_opts=compression_opts)
+  hf.create_dataset('shape', data=cmat.shape)
+  
+  hf.close()
+
+def read_unified_hdf5(outfile):
+  hf = h5py.File(outfile, 'r')
+  genes = [b.decode('utf-8') for b in hf['genes'][:]]
+  spots = [b.decode('utf-8') for b in hf['spots'][:]]
+  rows = hf['rows'][:]
+  cols = hf['cols'][:]
+  values = hf['values'][:]
+  shape = tuple(hf['shape'][:])
+  
+  cmat = coo_matrix((values, (rows, cols)), shape=shape)
+  df = pd.DataFrame.sparse.from_spmatrix(
+      data=cmat,
+      index=genes, 
+      columns=spots)
+  hf.close()
+  return df
 
 def to_numeric(num_str):
   num_str = num_str.strip()
@@ -386,7 +423,10 @@ def read_cellcomp_matrix(cellcomp_file, array_coordinates_str=None):
 
 def read_array(filename):
   # read the count file
-  count_file = pd.read_csv(filename,header=0,index_col=0,sep='\t') 
+  if filename.endswith('.hdf5'):
+    count_file = read_unified_hdf5(filename)
+  else:
+    count_file = pd.read_csv(filename,header=0,index_col=0,sep='\t') 
   # get the gene names
   array_genes = numpy.array(list(count_file.index))
   # get the spot coordinates
@@ -458,18 +498,48 @@ def detect_tissue_sections(coordinates,check_overlap=False,threshold=120):
 
   return unique_labels,spots_labeled
 
-def get_spot_adjacency_matrix(coordinates):
-  # get a matrix containing all pair-wise distances between spots
-  dist_matrix = distance_matrix(coordinates,coordinates)
+def get_spot_adjacency_matrix(coordinates, is_hd=False):
+  # Pairwise distance calculation is prohibitively slow for HD data (>50k spots);
+  # instead use efficient hashing strategy below
+  if is_hd:
+    return get_spot_adjacency_matrix_4n(coordinates)
+  else:
+    # get a matrix containing all pair-wise distances between spots
+    dist_matrix = distance_matrix(coordinates,coordinates)
 
-  # generate the spot adjacency matrix by using the 4-neighborhood rule
-  # TODO: do something a bit more elegant with the threshold 
-  dist_matrix[numpy.logical_or(dist_matrix > 1.2, \
-              numpy.isclose(dist_matrix,0))] = numpy.inf
-  W = 1.0/dist_matrix
-  W[W > 0] = 1
+    # generate the spot adjacency matrix by using the 4-neighborhood rule
+    # TODO: do something a bit more elegant with the threshold 
+    dist_matrix[numpy.logical_or(dist_matrix > 1.2, \
+                numpy.isclose(dist_matrix,0))] = numpy.inf
+    W = 1.0/dist_matrix
+    W[W > 0] = 1
 
-  return W
+    return W
+
+# Returns an 4-neighbor adjacency matrix for integer-coded coordinates
+def get_spot_adjacency_matrix_4n(int_coordinates):
+  def _get_4n(c):
+    offsets = numpy.array([(0,1), (0,-1), (1,0), (-1,0)])
+    nbrs = [c+o for o in offsets if numpy.all((c+o)>=0)]
+    return nbrs
+  str_coordinates = ['%d_%d' % tuple(c) for c in int_coordinates]
+  
+  # create hash tables mapping each point to all possible neighbors, as well as index in int_coordinates
+  nbr_lookup, idx_lookup = {},{}
+  for i,(c,cstr) in enumerate(zip(int_coordinates, str_coordinates)):
+    nbr_lookup[cstr] = _get_4n(c)
+    idx_lookup[cstr] = i
+
+  n = len(int_coordinates)
+  W = scipy.sparse.lil_matrix((n,n))
+  # O(4n): populate adjacency matrix
+  for i,(c,cstr) in enumerate(zip(int_coordinates, str_coordinates)):
+    for nbr in nbr_lookup[cstr]:
+      nbr_cstr = '%d_%d' % tuple(nbr)
+      if nbr_cstr in idx_lookup.keys():
+        j = idx_lookup[nbr_cstr]
+        W[i,j] = 1
+  return W.tocsr()
 
 def get_counts(gene_idx,N_tissues,counts_list):
   concatenated_counts = []
@@ -541,6 +611,53 @@ def generate_column_labels(files_list,coordinates_list):
   filenames_coordinates =  list(zip(*[filenames,coordinates]))
 
   return filenames_coordinates
+
+# Full eigendecomposition of large square matrices (N>10k) for CAR prior calculation is prohibitively expensive
+# APPROXIMATE solution: 
+# - break tissue into regularly spaced square chunks containing K<10k spots
+# - compute eigenvalues of spatial precision matrix (D^(-.5)*W*D^(.5)) in each chunk and concatenate
+def eigs_square_chunking(coords_str, chunksize=10000):
+    '''
+    Parameters:
+    ----------
+    coords_str: (N,) array of str
+        string representation of integer spot coordinates in "x_y" form
+    chunksize: int
+        maximum number of spots per chunk
+    Returns:
+    -------
+    eigs: (N,) array of float
+        sorted list of concatenated eigenvalues from all chunks
+    '''
+    coords_int = numpy.array([tuple(map(int, c.split('_'))) for c in coords_str])
+    xdim, ydim = coords_int[:,0].max(), coords_int[:,1].max()
+    eigs_all = []
+    
+    wc = int(numpy.rint(chunksize**0.5))
+    for i in range(0, xdim, wc):
+        xinds = numpy.logical_and(coords_int[:,0] >= i, coords_int[:,0] < i+wc)
+        for j in range(0, ydim, wc):
+            yinds = numpy.logical_and(coords_int[:,1] >= j, coords_int[:,1] < j+wc)
+            
+            coords_sub = coords_int[numpy.logical_and(xinds, yinds)]
+            if len(coords_sub) > 0:
+                if len(coords_sub) > chunksize:
+                  logging.warning('Improper use of chunking eigenvalue solution -- neighboring spots should be unit-distance apart')
+
+                # Assumes 4-adjacency for now
+                W_sub = get_spot_adjacency_matrix_4n(coords_sub)
+    
+                # From adjacency matrix W, compute eigenvalues of D^(-.5)*W*D^(.5)
+                D_sub = W_sub.sum(1).A1.astype(int)
+                D_v = diags(1.0/numpy.sqrt(D_sub),0,format='csr')
+                R = D_v.dot(W_sub).dot(D_v)
+                eigs = numpy.linalg.eigvalsh(R.toarray())
+                eigs_all.append(eigs)
+
+    eigs_all = numpy.concatenate(eigs_all)
+    eigs_all.sort()
+    assert len(eigs_all) == len(coords_str)
+    return eigs_all
 
 def scale_and_round(mat):
   x = numpy.maximum(mat, 0)
@@ -618,11 +735,16 @@ def generate_dictionary(N_spots_list,N_tissues,N_covariates,
 
     # Instead, compute eigenvalues for each tissue separately, then concatenate & sort:
     eigval_list = []
-    for W_tissue in W_list:
-      W = block_diag([W_tissue],format='csr')
-      D_sparse_tissue = W.sum(1).A1.astype(int)
-      D_v = diags(1.0/numpy.sqrt(D_sparse_tissue),0,format='csr')
-      evs = numpy.linalg.eigvalsh(D_v.dot(W).dot(D_v).toarray())
+
+    for t, (W_tissue, coords_tissue) in enumerate(zip(W_list, coordinates_list)):
+      if W_tissue.shape[0] < 10000:
+        W = block_diag([W_tissue],format='csr')
+        D_sparse_tissue = W.sum(1).A1.astype(int)
+        D_v = diags(1.0/numpy.sqrt(D_sparse_tissue),0,format='csr')
+        evs = numpy.linalg.eigvalsh(D_v.dot(W).dot(D_v).toarray())
+      else:
+        logging.info('Tissue %d exceeds 10k connected points -- CAR prior eigenvalues calculated by chunking' % t)
+        evs = eigs_square_chunking(coords_tissue, 10000)
       eigval_list.append(evs)
     data['eig_values'] = numpy.sort(numpy.concatenate(eigval_list))
 
