@@ -23,85 +23,21 @@ The cSplotch code in this repository supports single-, two-, and three-level exp
 
 ## Installation
 
-Tested on Python 3.5 and 3.7.
+Tested on Python 3.10
 
 cSplotch has been tested on Mac and Linux. It has not been tested on Windows.
 
-### First installation method
-
 #### Installing cSplotch
 
-The following command installs the cSplotch Python module and compiles the Stan model in one go
-```console
-$ pip install git+https://git@github.com/adaly/cSplotch.git
-$ pip install --no-deps --force-reinstall --upgrade --install-option="--stan" git+https://git@github.com/adaly/cSplotch.git
-```
+The following command installs the cSplotch Python module:
 
-First, the installation script downloads the latest version of [CmdStan](https://mc-stan.org/users/interfaces/cmdstan) and compiles it. Second, the installation script uses the CmdStan installation to compile the Stan model.
-
-As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, ``splotch_generate_input_files``, and ``splotch_stan_model``
-```console
-$ splotch
-usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
-splotch: error: argument -g is required
-$ splotch_prepare_count_files
-usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
-                                   [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
-                                   [-V/--Visium]
-                                   [-v]
-splotch_prepare_count_files: error: the following arguments are required: -c/--count_files
-$ splotch_generate_input_files
-usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
-                                    METADATA_FILE -s SCALING_FACTOR
-                                    [-l N_LEVELS]
-                                    [-d MINIMUM_SEQUENCING_DEPTH]
-                                    [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
-                                    [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V] [-v] 
-                                    [-p] 
-                                    [-e SINGLE_CELL_ANNDATA] [-g GROUP_KEY] [-G GENE_NAMES]
-splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
-$ splotch_stan_model
-Usage: splotch_stan_model <arg1> <subarg1_1> ... <subarg1_m> ... <arg_n> <subarg_n_1> ... <subarg_n_m>
-⋮
-Failed to parse arguments, terminating Stan
-```
-For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in the original ST format unless the ``-V/--Visium`` flag is passed. We will discuss the differences in input format in the subsequent sections.
-
-### Second installation method
-
-The second installation method installs cSplotch and compiles the Stan model in separate steps. 
-
-#### Installing cSplotch without compiling the Stan models
-The cSplotch Python module can be installed without compiling the Stan models as follows
 ```console
 $ pip install git+https://git@github.com/adaly/cSplotch.git
 ```
 
-As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, and ``splotch_generate_input_files``
-```console
-$ splotch
-usage: splotch [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
-splotch: error: argument -g is required
-$ splotch_prepare_count_files
-usage: splotch_prepare_count_files [-h] -c COUNT_FILES [COUNT_FILES ...]
-                                   [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
-                                   [-V/--Visium]
-                                   [-v]
-splotch_prepare_count_files: error: the following arguments are required: -c/--count_files
-$ splotch_generate_input_files
-usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
-                                    METADATA_FILE -s SCALING_FACTOR
-                                    [-l N_LEVELS]
-                                    [-d MINIMUM_SEQUENCING_DEPTH]
-                                    [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
-                                    [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V] [-v]
-                                    [-p] 
-                                    [-e SINGLE_CELL_ANNDATA] [-g GROUP_KEY] [-G GENE_NAMES]
-splotch_generate_input_files: error: the following arguments are required: -c/--count_files, -m/--metadata_file, -s/--scaling_factor
-```
-For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in the original ST format unless the ``-V/--Visium`` flag is passed. We will discuss the differences in input format in the subsequent sections.
+As a result of this, the user will have the executables ``splotch``, ``splotch_prepare_count_files``, ``splotch_generate_input_files``, ``splotch_compile_lamdbas`` and ``splotch_compile_betas``
+
+For ``splotch_prepare_count_files`` and ``splotch_generate_input_files``, the inputs are assumed to be in Visium v1/v2 format unless the ``-B/--hd-binning`` (Visium HD) or ``-S/--st-v1`` (ST v1) flags are passed. We will discuss the differences in input format in the subsequent sections.
 
 #### Installing CmdStan
 [CmdStan](https://mc-stan.org/users/interfaces/cmdstan) [[2]](#references) can be installed as follows
@@ -145,12 +81,12 @@ The main steps of cSplotch analysis are the following:
 1. [Preparation of count files](#preparation-of-count-files)
     - ``splotch_prepare_count_files``
 2. [Annotation of ST spots](#annotation-of-st-spots)
-    - [Original ST](#original-st-count-data)
-    - [Visium ST](#visium-st-count-data)
+    - [Visium/VisiumHD](#visium-st-count-data)
+    - [ST v1](#original-st-count-data)
 3. [Annotation of cell types](#annotation-of-cell-types)
 4. [Preparation of metadata table](#preparation-of-metadata-table)
-    - [Original ST](#original-st-annotations)
     - [Visium ST](#visium-st-annotations)
+    - [Original ST](#original-st-annotations)
 5. [Preparation of input data files for cSplotch](#preparation-of-input-data-for-splotch)
     - ``splotch_generate_input_files``
 6. [cSplotch analysis](#splotch-analysis)
@@ -158,7 +94,7 @@ The main steps of cSplotch analysis are the following:
 7. [Summarizing cSplotch output](#summarizing-csplotch-output)
     - ``splotch_compile_lambdas``
     - ``splotch_compile_betas``
-7. [Downstream analysis](#downstream-analysis)
+8. [Downstream analysis](#downstream-analysis)
 
 Below we will describe these steps in detail.
 
@@ -168,55 +104,20 @@ In the directory ``examples``, we have some example ST data [[3]](#references). 
 
 ### Preparation of count files
 
-The inputs to the count file preparation script differ depending on whether the user is supplying data from original ST or Visium ST. Both cases are outlined below.
+The inputs to the count file preparation script differ depending on whether the user is supplying data from Visium/Visium HD or ST v1. Both cases are outlined below.
 
-#### Original ST count data
-
-The count files in the original ST workflow have the following tab-separated values (TSV) file format
-
-|               | 32.06_2.04 | 31.16_2.04 | 14.07_2.1 |  …         | 28.16_33.01 |
-|---------------|------------|------------|-----------|-----------|-----------|
-| A130010J15Rik | 0          | 0          | 0         |  …         |  0         |
-| A230046K03Rik | 0          | 0          | 0         |  …         |  0         |
-| A230050P20Rik | 0          | 0          | 0         |  …         |  0         |
-| A2m           | 0          | 1          | 0         |  …         |  0         |
-| ⋮           | ⋮          | ⋮          | ⋮         |  ⋱         |  ⋮         |
-| Zzz3          | 0          | 1          | 0         |  …         |  0        |
-
-The rows and columns have gene identifiers and ST spot coordinates, respectively.
-
-We have to make sure that the count files have the same indexing. This can be achieved using the provided Python script ``splotch_prepare_count_files``
-
-```console
-$ splotch_prepare_count_files --help
-
-usage: splotch_prepare_count_files [-h] -c COUNT_DATA [COUNT_FILES ...]
-                                   [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
-
-A script for preparing count files for cSplotch
-
-optional arguments:
--h, --help              show this help message and exit
--c COUNT_DATA [COUNT_FILES ...], --count_data [COUNT_FILES ...]
-                        list of read count filenames
--s SUFFIX, --suffix SUFFIX
-                        suffix to be added to the output filenames (default is .unified.tsv)
--d MINIMUM_DETECTION_RATE, --minimum_detection_rate MINIMUM_DETECTION_RATE
-                        minimum detection rate (default is 0.02)
-```
-
-#### Visium ST count data
+#### Visium/Visium HD count data
 
 When working with data from the Visium platform, count data are expected in the form of the output of [spaceranger count](https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/using/count), which produces a structured directory containing count and metadata information for each sample.
 
-As with the original ST data, we must ensure that count files have the same indexing. This can still be achieved through the use of the ``splotch_prepare_count_files`` with the ``-V/--Visium`` flag set, which tells the script to expect paths to spaceranger output directories as input instead of stand-alone count files. The output of the script will be an additional Splotch-formatted count file created within the top level of each spaceranger output directory.
+Prior to downstream analysis, we must ensure that each array contains the same genes in the same index order. This is achieved through the use of the ``splotch_prepare_count_files`` (the ``-V/--Visium`` flag is set by default) on **all arrays to be included in analysis**. The output of the script will be an additional Splotch-formatted count file (default: [ARRAY_NAME.unified.tsv.gz]) created within the top level of each spaceranger output directory.
 
 ```console
 $ splotch_prepare_count_files --help
 
 usage: splotch_prepare_count_files [-h] -c COUNT_DATA [SPACERANGER_COUNT_DIRS ...]
                                    [-s SUFFIX] [-d MINIMUM_DETECTION_RATE]
-                                   [-V]
+                                   [-V] [-B NAME_OF_BINNING] [-S]
 
 A script for preparing count files for cSplotch
 
@@ -225,18 +126,38 @@ optional arguments:
 -c COUNT_DATA [SPACERANGER_COUNT_DIRS ...], --count_data [SPACERANGER_COUNT_DIRS ...]
                         list of spaceranger count directories
 -s SUFFIX, --suffix SUFFIX
-                        suffix to be added to the sample name in creation of cSplotch count file within each spaceranger directory (default is .unified.tsv)
+                        suffix to be added to the sample name in creation of cSplotch count file within each spaceranger directory
+                        (default is .unified.tsv.gz for Visium/STv1, .unified.hdf5 for Visium HD)
 -d MINIMUM_DETECTION_RATE, --minimum_detection_rate MINIMUM_DETECTION_RATE
                         minimum detection rate (default is 0.02)
--V, --Visium            data are from the Visium platform
+-V, --Visium            data are from the Visium platform (default)
+-B NAME_OF_BINNING, --hd-binning NAME_OF_BINNING
+                        name of binning to use (Visium HD only); must be a directory within */outs/binned_outputs for all SPACERANGER_COUNT_DIRS
+-S, --st-v1             data are from the STv1 platform (overrides -V and -B)  
 ```
-For a sample with spaceranger output ``spaceranger_output/CN51_C2/``, this script would create a file ``spaceranger_output/CN51_C2/CN51_C2.unified.tsv`` which would then serve as input to ``splotch_generate_input_files`` (discussed below).
+
+#### ST v1 count data
+
+Count data from original ST workflow are fully represented by a single tab-separated value (TSV) file of the following format:
+
+|               | 32.06_2.04 | 31.16_2.04 | 14.07_2.1 |  …         | 28.16_33.01 |
+|---------------|------------|------------|-----------|------------|-------------|
+| A130010J15Rik | 0          | 0          | 0         |  …         |  0          |
+| A230046K03Rik | 0          | 0          | 0         |  …         |  0          |
+| A230050P20Rik | 0          | 0          | 0         |  …         |  0          |
+| A2m           | 0          | 1          | 0         |  …         |  0          |
+| ⋮             | ⋮          | ⋮          | ⋮         |  ⋱         |  ⋮         |
+| Zzz3          | 0          | 1          | 0         |  …         |  0        |
+
+The rows and columns have gene identifiers and ST spot coordinates (in ``XCOORD_YCOORD`` format), respectively.
+
+``splotch_prepare_count_files`` is applied identically to above, but with the ``-c/--count_data`` argument pointing to a list of count files in the above format, and with the ``-S/--st-v1`` flag set.
 
 #### Example
 
 For instance, the following command prepares the count files located in ``examples/Count_Tables`` [[3]](#references)
 ```console
-$ splotch_prepare_count_files -c examples/Count_Tables/*_stdata_aligned_counts_IDs.txt
+$ splotch_prepare_count_files -c examples/Count_Tables/*_stdata_aligned_counts_IDs.txt -S
 INFO:root:Reading 10 count files
 INFO:root:We have detected 18509 genes
 INFO:root:We keep 11313 genes after discarding the lowly expressed genes (detected in less than 2.00% of the ST spots)
@@ -246,7 +167,29 @@ INFO:root:The median sequencing depth across the ST spots is 2389
 ### Annotation of ST spots
 To get the most out of the statistical model of cSplotch one has to annotate the ST spots based on their tissue context. These annotations will allow the model to share information across tissue sections, resulting in more robust conclusions.
 
-#### Original ST annotations
+#### Visium ST annotations
+
+10x Genomics have provided a tool for the exploration and annotation of Visium/Visium HD data called [Loupe](https://support.10xgenomics.com/spatial-gene-expression/software/visualization/latest/what-is-loupe-browser). 
+
+When working with Visium data, we expect annnotation files in the CSV format exported by the Loupe browser
+
+| Barcode            | Label          |
+|--------------------|----------------|
+| AAACACCAATAACTGC-1 | Vent_Med_White |
+| AAACATGGTGAGAGGA-1 | Vent_Horn      |
+| AAACATTTCCCGGATT-1 | Lat_Edge       |
+| AAACCTAAGCAGCCGG-1 | Vent_Horn      |
+| AAACGAAGATGGAGTA-1 | Vent_Horn      |
+| AAACGAGACGGTTGAT-1 | Med_Lat_White  |
+| AAACGGGCGTACGGGT-1 | Vent_Horn      |
+
+The Barcode column specifies the spatial barcode associated with each spot/bin in the Visium array (mapped to array/pixel coordinates through the file ``outs/spatial/tissue_positions.csv`` (Visium v1/v2) or ``outs/binned_outputs/[NAME_OF_BINNING]/spatial/tissue_positions.parquet (Visium HD)) while the second column contains a single label for each spot.
+
+ST spots without annotation categories are discarded by ``splotch_generate_input_files`` (please see [Preparation of the input data files for Splotch](#preparation-of-the-input-data-files-for-splotch)). This behaviour can be useful when you want to discard some ST spots from the analysis based on the tissue histology.
+
+Annotation files for the count files in ``examples/Counts_Tables`` are located in ``examples/Annotations`` [3].
+
+#### ST v1 annotations
 
 To make the annotation step slightly less tedious in the original ST workflow, we have implemented a light-weight js tool called [Span](https://github.com/tare/Span).
 
@@ -268,27 +211,6 @@ The annotation files have the following TSV file format
 
 The rows and columns correspond to the user-define anatomical annotation regions (AAR) and ST spot coordinates, respectively. For instance, the spot 32.06_2.04 has the Vent_Horn annotation (i.e. located in ventral horn). The annotation category of each ST spot is **one-hot encoded** and we do not currently support more than one annotation category per ST spot.
 
-#### Visium ST annotations
-
-10x Genomics have provided a tool for the exploration and annotation of Visium data called [Loupe](https://support.10xgenomics.com/spatial-gene-expression/software/visualization/latest/what-is-loupe-browser). 
-
-When working with Visium data, we expect annnotation files in the CSV format exported by the Loupe browser
-
-| Barcode            | Label          |
-|--------------------|----------------|
-| AAACACCAATAACTGC-1 | Vent_Med_White |
-| AAACATGGTGAGAGGA-1 | Vent_Horn      |
-| AAACATTTCCCGGATT-1 | Lat_Edge       |
-| AAACCTAAGCAGCCGG-1 | Vent_Horn      |
-| AAACGAAGATGGAGTA-1 | Vent_Horn      |
-| AAACGAGACGGTTGAT-1 | Med_Lat_White  |
-| AAACGGGCGTACGGGT-1 | Vent_Horn      |
-
-The Barcode column specifies the spatial barcode associated with each spot in the Visium array (which can be associated with Visium array coordinates or pixel coordinates within the corresponding histology image using metadata in the spaceranger output directory) while the second column can be named according to any category type (Tissue, AAR, etc.) and contains a unique label for each spot.
-
-ST spots without annotation categories are discarded by ``splotch_generate_input_files`` (please see [Preparation of the input data files for Splotch](#preparation-of-the-input-data-files-for-splotch)). This behaviour can be useful when you want to discard some ST spots from the analysis based on the tissue histology.
-
-Annotation files for the count files in ``examples/Counts_Tables`` are located in ``examples/Annotations`` [3].
 
 ### Annotation of cell types
 
@@ -308,23 +230,17 @@ The metadata table contains information about the samples (i.e. count files). Ad
 
 The metadata table has the following TSV file format
 
-| Name      | Level 1   | Level 2 | Level 3 | Count file                                                                | Annotation file                    | Image file                       | 
-|-----------|-----------|---------|---------|---------------------------------------------------------------------------|------------------------------------|----------------------------------| 
-| L7CN36_C1 | G93A p120 | F       | 1394    | examples/Count_Tables/L7CN36_C1_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN36_C1.tsv | examples/Images/L7CN36_C1_HE.jpg | 
-| L7CN36_C2 | G93A p120 | F       | 1394    | examples/Count_Tables/L7CN36_C2_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN36_C2.tsv | examples/Images/L7CN36_C2_HE.jpg | 
-| L7CN30_C1 | WT p120   | M       | 2967    | examples/Count_Tables/L7CN30_C1_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN30_C1.tsv | examples/Images/L7CN30_C1_HE.jpg | 
-| L7CN30_C2 | WT p120   | M       | 2967    | examples/Count_Tables/L7CN30_C2_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN30_C2.tsv | examples/Images/L7CN30_C2_HE.jpg | 
-| L7CN69_D1 | WT p120   | M       | 1310    | examples/Count_Tables/L7CN69_D1_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN69_D1.tsv | examples/Images/L7CN69_D1_HE.jpg | 
-| L7CN69_D2 | WT p120   | M       | 1310    | examples/Count_Tables/L7CN69_D2_stdata_aligned_counts_IDs.txt.unified.tsv | examples/Annotations/L7CN69_D2.tsv | examples/Images/L7CN69_D2_HE.jpg | 
-| CN96_E1   | WT p120   | F       | 1040    | examples/Count_Tables/CN96_E1_stdata_aligned_counts_IDs.txt.unified.tsv   | examples/Annotations/CN96_E1.tsv   | examples/Images/CN96_E1_HE.jpg   | 
-| CN96_E2   | WT p120   | F       | 1040    | examples/Count_Tables/CN96_E2_stdata_aligned_counts_IDs.txt.unified.tsv   | examples/Annotations/CN96_E2.tsv   | examples/Images/CN96_E2_HE.jpg   | 
-| CN93_E1   | G93A p120 | M       | 975     | examples/Count_Tables/CN93_E1_stdata_aligned_counts_IDs.txt.unified.tsv   | examples/Annotations/CN93_E1.tsv   | examples/Images/CN93_E1_HE.jpg   | 
-| CN93_E2   | G93A p120 | M       | 975     | examples/Count_Tables/CN93_E2_stdata_aligned_counts_IDs.txt.unified.tsv   | examples/Annotations/CN93_E2.tsv   | examples/Images/CN93_E2_HE.jpg   | 
+| Name      | Level 1   | Level 2 | Level 3 | Spaceranger output    | Count file                                        | Annotation file                    | Image file                       | 
+|-----------|-----------|---------|---------|-----------------------|---------------------------------------------------|------------------------------------|----------------------------------| 
+| L7CN36_C1 | G93A p120 | F       | 1394    | Spaceranger/L7CN36_C1 | Spaceranger/L7CN36_C1/L7CN36_C1.unified.tsv.gz    | Annotations/L7CN36_C1.tsv          | Images/L7CN36_C1_HE.jpg          | 
+| L7CN30_C1 | G93A p120 | F       | 2967    | Spaceranger/L7CN30_C1 | Spaceranger/L7CN30_C1/L7CN30_C1.unified.tsv.gz    | Annotations/L7CN30_C1.tsv          | Images/L7CN30_C1_HE.jpg          | 
+| L7CN69_D1 | WT p120   | M       | 1310    | Spaceranger/L7CN69_D1 | Spaceranger/L7CN69_D1/L7CN69_D1.unified.tsv.gz    | Annotations/L7CN69_D1.tsv          | Images/L7CN69_D1_HE.jpg          | 
+| L7CN69_D2 | WT p120   | M       | 1310    | Spaceranger/L7CN69_D2 | Spaceranger/L7CN69_D2/L7CN69_D2.unified.tsv.gz    | Annotations/L7CN69_D2.tsv          | Images/L7CN69_D2_HE.jpg          | 
 
-Each sample (i.e. count file) has its own row in the metadata table. The columns ``Level 1``, ``Count file``, and  ``Annotation file`` are mandatory.  The column ``Level 2`` is mandatory when using the two-level model. Whereas, the columns ``Level 2`` and ``Level 3`` are mandatory when using the three-level model. The columns ``Level 1``, ``Level 2``, and ``Level 3`` define how the samples are analyzed using the linear multilevel model.
+Each sample (i.e. count file) has its own row in the metadata table. The columns ``Level 1``, ``Spaceranger output`` (Visium/Visium HD only), ``Count file`` (generated by ``splotch_prepare_count_files``), and  ``Annotation file`` are mandatory.  The column ``Level 2`` is mandatory when using the two-level model. Whereas, the columns ``Level 2`` and ``Level 3`` are mandatory when using the three-level model. The columns ``Level 1``, ``Level 2``, and ``Level 3`` define how the samples are analyzed using the linear multilevel model.
 
-#### Visium metadata
-Visium data requires an **additional column, "Spaceranger output"**, that points to the spaceranger output directory associated with each sample.
+#### ST v1 metadata
+ST v1 data do not require the ``Spaceranger output`` column, only ``Count file``.
 
 #### Compositional metatada
 Deconvolutional analysis requires an **additional column, "Composition file"**, that points to the [cell type composition file](#annotation-of-cell-types) associated with each sample.
@@ -339,14 +255,14 @@ Stan can only read data in R dump format, in which variables are declared as sca
 To make this step less painful for the user, we have provided the script ``splotch_generate_input_files``
 ```console
 $ splotch_generate_input_files --help
-usage: splotch_generate_input_files [-h] -c COUNT_FILES [COUNT_FILES ...] -m
+usage: splotch_generate_input_files [-h] [-v] -c COUNT_FILES [COUNT_FILES ...] -m
                                     METADATA_FILE -s SCALING_FACTOR
                                     [-l N_LEVELS]
                                     [-d MINIMUM_SEQUENCING_DEPTH]
                                     [-t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION]
                                     [-n] [-z] [-o OUTPUT_DIRECTORY] 
-                                    [-V] [-v] [-p] [-e SINGLE_CELL_ANNDATA] 
-                                    [-g GROUP_KEY] [-G GENE_SYMBOLS]
+                                    [-V] [-B NAME_OF_BINNING] [-S]
+                                    [-p] [-e SINGLE_CELL_ANNDATA] [-g GROUP_KEY] [-G GENE_SYMBOLS]
 
 A script for generating input data for cSplotch
   
@@ -357,21 +273,23 @@ optional arguments:
 -m METADATA_FILE, --metadata_file METADATA_FILE
                       metadata filename
 -s SCALING_FACTOR, --scaling_factor SCALING_FACTOR
-                      scaling_factor (e.g. median sequencing depth over
-                      spots)
+                      scaling_factor (e.g. median sequencing depth over spots)
 -l N_LEVELS, --n_levels N_LEVELS
                       number of levels in the linear model (default is 3)
 -d MINIMUM_SEQUENCING_DEPTH, --min_depth MINIMUM_SEQUENCING_DEPTH
                       minimum number of UMIs per spot (default is 100)
 -t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION, --t MAXIMUM_NUMBER_OF_SPOTS_PER_TISSUE_SECTION
                       number of spots threshold for identifying overlapping
-                      tissue sections (default is 2000)
+                      tissue sections (default is 4992 for Visium, 200k for VisiumHD, 2000 for ST v1)
 -n, --no-car          disable the conditional autoregressive prior
 -z, --no-zip          use the Poisson likelihood instead of the zero-
                       inflated Poisson likelihood
 -o OUTPUT_DIRECTORY, --output_directory OUTPUT_DIRECTORY
                       output_directory (default is data)
--V, --Visium          data are from the Visium platform (default is false)
+-V, --Visium          data are from the Visium platform (default)
+-B NAME_OF_BINNING, --hd-binning NAME_OF_BINNING
+                      name of binning to use (Visium HD only); must be a directory within */outs/binned_outputs for all SPACERANGER_COUNT_DIRS
+-S, --st-v1           data are from the ST v1 platform
 -v, --version         show program's version number and exit
 -p, --compositional   deconvolve expression into cell-type specific signatures using 
                       compositional annotations
@@ -386,7 +304,7 @@ optional arguments:
 
 The input files are saved in subdirectories (i.e. 100 files per subdirectory to limit the number of files per directory) in the directory specified using ``-o OUTPUT_DIRECTORY``. There will be as many input files as there were genes in the prepared count files (please see [Preparation of count files](#preparation-of-count-files)). Moreover, the input file indices match with the line numbers of the prepared count files (header line is not taken into account); i.e. the data of the gene on the 4<sup>th</sup> row is saved in the file ``OUTPUT_DIRECTORY/0/data_3.R``.
 
-Note that ``splotch_generate_input_files`` process the intersection of the count files provided using ``-c COUNT_FILES`` and the count files listed in the metadata table provided using ``-m METADATA_FILE`` . Therefore, the metadata table might cover additional samples.
+Note that ``splotch_generate_input_files`` process the intersection of the count files provided using ``-c COUNT_FILES`` and the count files listed in the metadata table provided using ``-m METADATA_FILE``. Therefore, the metadata table might cover additional samples.
 
 Additionally, the file ``OUTPUT_DIRECTORY/information.p`` is created to help the interpretation of the results. The use of  the file ``information.p`` is demonstrated in [Tutorial.ipynb](Tutorial.ipynb).
 
