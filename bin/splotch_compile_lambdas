@@ -15,6 +15,9 @@ from anndata import AnnData
 from argparse import ArgumentParser
 from splotch.utils import read_rdump
 
+# Values mapped to NaN by Pandas<=1.5.3; Pandas>2 maps "None" to NaN as well, which we may want to allow as an annotation category in sample metadata (e.g., Onset)
+pd_nan_values = ['','#N/A','#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN', '-nan', '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN', 'n/a', 'nan', 'null']
+
 ## TODO: Support for classic Splotch outputs (slow!!)
 ## TODO: Include beta means/SDs in adata.uns?
 
@@ -59,7 +62,7 @@ if 'celltype_mapping' in sinfo.keys():
 print(gene_lambdas.shape, flush=True)
 
 # Compile AnnData object
-meta = pd.read_csv(args.meta_file, sep='\t', header=0, index_col=0)
+meta = pd.read_csv(args.meta_file, sep='\t', header=0, index_col=0, keep_default_na=False, na_values=pd_nan_values)
 meta.index = meta['Count file']
 
 coords = np.array(['_'.join(s) for s in sinfo['filenames_and_coordinates']])

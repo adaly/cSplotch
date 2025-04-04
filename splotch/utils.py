@@ -165,6 +165,8 @@ def read_stan_csv(filename,variables,efficient=False):
       for i, line in enumerate(fh):
         if isinstance(line, bytes):
           line = line.decode('UTF-8')
+        if line.startswith('#'):
+          continue
         tokens = line.strip().split(",")
         tokens = numpy.array(tokens)
 
