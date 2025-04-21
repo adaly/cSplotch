@@ -153,16 +153,22 @@ def read_stan_csv(filename,variables,efficient=False):
   # For large files, (>4GB or so), use custom reading routine:
   else:
     # First count the number of MCMC samples in the file (cheaply):
+    N_samples=0
     with open_fn(filename, "r") as fh:
       for i,line in enumerate(fh):
-        pass
-    N_samples=i # Number of samples excluding header line
+        if isinstance(line, bytes):
+          line=line.decode('UTF-8')
+        if not line.startswith('#'):
+          N_samples+=1
+    N_samples-=1 # Number of samples excluding header line
     
     # Construct a (N_samples x N_variables) matrix, then convert to a pandas dataframe.
     # N_variables are the number of variables in the Splotch posterior estimate that start with one of
     #  the names provided in "variables" -- i.e., beta_level_1 yields all beta parameters at level 1.
+    keep_inds=None
+    i=0
     with open_fn(filename, "r") as fh:
-      for i, line in enumerate(fh):
+      for line in fh:
         if isinstance(line, bytes):
           line = line.decode('UTF-8')
         if line.startswith('#'):
@@ -170,13 +176,15 @@ def read_stan_csv(filename,variables,efficient=False):
         tokens = line.strip().split(",")
         tokens = numpy.array(tokens)
 
-        if i==0:
+        # header line
+        if keep_inds is None:
           keep_inds = numpy.zeros(len(tokens), dtype=bool)
           for v in variables:
             keep_inds += numpy.array([(s.startswith(v+'.') or s==v) for s in tokens])
           cols = tokens[keep_inds]      
           data = numpy.zeros((N_samples, len(cols)))
         else:
+          i+=1
           if len(tokens) == len(keep_inds):
             data[i-1,:] = [float(f) for f in tokens[keep_inds]]
           else:
