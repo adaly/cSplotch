@@ -1,0 +1,216 @@
+#!/bin/bash -e
+
+error_exit()
+{
+  echo "$1" 1>&2
+  exit 1
+}
+
+error_exit()
+{
+  echo "$1" 1>&2
+  exit 1
+}
+
+usage() {
+  echo "usage: `basename $0` [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]" 1>&2
+}
+long_usage() {
+  cat <<EOF
+usage: `basename $0` [-h] -g GENE_IDX -d DATA_DIRECTORY -o OUTPUT_DIRECTORY
+               -b BINARY -n NUM_SAMPLES -c NUM_CHAINS [-s]
+
+A wrapper for running Splotch with Pathfinder initialization
+
+optional arguments:
+  -h                    show this help message and exit
+  -g                    gene index
+  -d                    data directory
+  -o                    output directory
+  -b                    Splotch binary
+  -n                    number of samples
+  -c                    number of chains
+  -s                    store summary rather than full output
+EOF
+}
+
+gflag=false
+dflag=false
+oflag=false
+bflag=false
+nflag=false
+cflag=false
+sflag=false
+
+while getopts ":g:d:o:b:n:c:h:s" options; do
+  case "${options}" in 
+    h)
+      long_usage
+      exit 0
+      ;;
+    g)
+      GENE=${OPTARG}
+      gflag=true
+      ;;
+    d)
+      DATA_DIRECTORY=${OPTARG}
+      dflag=true
+      ;;
+    o)
+      OUTPUT_DIRECTORY=${OPTARG}
+      oflag=true
+      ;;
+    b)
+      BINARY=${OPTARG}
+      bflag=true
+      ;;
+    n)
+      NUM_SAMPLES=${OPTARG}
+      nflag=true
+      ;;
+    c)
+      NUM_CHAINS=${OPTARG}
+      cflag=true
+      ;;
+    s)
+      sflag=true
+      ;;
+    :)
+      usage
+      echo "`basename $0`: error argument: -${OPTARG}: expected one argument"
+      exit 1
+      ;;
+    #*)
+      #usage
+      #exit 1
+      #;;
+  esac
+done
+
+# check we got all the required arguments
+if ! $gflag
+then
+  usage
+  echo "`basename $0`: error: argument -g is required"
+  exit 1 
+fi
+if ! $dflag
+then
+  usage
+  echo "`basename $0`: error: argument: -d is required"
+  exit 1 
+fi
+if ! $oflag
+then
+  usage
+  echo "`basename $0`: error: argument: -o is required"
+  exit 1 
+fi
+if ! $bflag
+then
+  usage
+  echo "`basename $0`: error: argument: -b is required"
+  exit 1 
+fi
+if ! $nflag
+then
+  usage
+  echo "`basename $0`: error: argument: -n is required"
+  exit 1 
+fi
+if ! $cflag
+then
+  usage
+  echo "`basename $0`: error: argument: -c is required"
+  exit 1 
+fi
+
+DIRECTORY=$(($GENE/100))
+
+declare -a pids=()
+
+mkdir -p "$OUTPUT_DIRECTORY"/"$DIRECTORY" || error_exit "Error: Cannot create the output directory!"
+
+# === STEP 1: Pathfinder ADVI Optimization ===
+echo "Running Pathfinder optimization..."
+
+NUM_INIT=1000
+PATHFINDER_OUTPUT="$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE".csv
+
+"$BINARY" pathfinder num_draws="$NUM_INIT" num_paths="$NUM_CHAINS" data file="$DATA_DIRECTORY"/"$DIRECTORY"/data_"$GENE".R output file="$PATHFINDER_OUTPUT" || error_exit "Error: Pathfinder run failed!"
+
+# === STEP 2: Extract Final Pathfinder Draw as Init ===
+
+INIT_FILE="$OUTPUT_DIRECTORY"/"$DIRECTORY"/init_"$GENE".json
+
+# Read first line of Pathfinder output for parameter names, as well as NUM_CHAINS lines at random to initialize 
+# each HMC chain, then save to JSON files for input to HMC as initial parameters
+python3 -c "
+import json
+import gzip
+import numpy as np
+
+if \"$PATHFINDER_OUTPUT\".endswith('.gz'):
+  open_fn = gzip.open 
+else:
+  open_fn = open
+
+first_line = None
+draws = np.random.choice(int(\"$NUM_INIT\"), size=int(\"$NUM_CHAINS\"), replace=False)
+draw_lines = []
+line_count = 0
+with open_fn(\"$PATHFINDER_OUTPUT\") as fh:
+  for line in fh:
+    if isinstance(line, bytes):
+      line = line.decode('UTF-8')
+
+    if not line.startswith('#'):
+      if first_line is None:
+        first_line = line
+      else:
+        if line_count in draws:
+          draw_lines.append(line)
+        line_count += 1
+    elif first_line is not None and len(draw_lines)==int(\"$NUM_CHAINS\"):
+      break
+
+header = first_line.split(',')
+for i, last_line in enumerate(draw_lines):
+  values = last_line.split(',')
+  init_dict = {k: float(v) for k, v in zip(header, values) if k not in ['lp_approx__','lp__','path__']}
+  with open(\"$INIT_FILE\".replace('.json', '_%d.json' % (i+1)), 'w') as f:
+      json.dump(init_dict, f, indent=2)
+"
+
+echo "Initialization file created: ${INIT_FILE}"
+rm $PATHFINDER_OUTPUT
+
+# === STEP 3: Run HMC Sampling WITHOUT Warmup ===
+
+# run chains
+for CHAIN in `seq 1 $NUM_CHAINS`
+do
+  INIT_CHAIN="$OUTPUT_DIRECTORY"/"$DIRECTORY"/init_"$GENE"_"$CHAIN".json
+  "$BINARY" sample num_samples="$NUM_SAMPLES" num_warmup=150 random id="$CHAIN" init="$INIT_CHAIN" data file="$DATA_DIRECTORY"/"$DIRECTORY"/data_"$GENE".R output file="$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_"$CHAIN".csv refresh=10 || error_exit "Error: Stan run failed!" &
+  pids+=($!)
+done
+
+wait ${pids[@]}
+
+# get variable names from the output of the first chain
+grep lp__ "$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_1.csv > "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv || error_exit "Error: Concatenation of individual sample files failed!"
+# concatenate samples from all the chains
+sed '/^[#l]/d' "$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_*.csv >> "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv || error_exit "Error: Concatenation of individual sample files failed!"
+
+# remove individual csv output files
+rm -f "$OUTPUT_DIRECTORY"/"$DIRECTORY"/output_"$GENE"_*.csv || error_exit "Error: Deletion of individual sample files failed!"
+
+if $sflag
+then
+  # generate an HDF5-formatted summary of the HMC output, containing mean/std for all model variables plus full posteriors over betas
+  splotch_summarize_output -p "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv -o "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".hdf5 || error_exit "Error: Summarization of posterior failed!"
+  # remove full HMC output
+  rm -f "$OUTPUT_DIRECTORY"/"$DIRECTORY"/combined_"$GENE".csv
+fi
+
+exit 0
