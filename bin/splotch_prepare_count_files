@@ -104,12 +104,17 @@ def prepare_count_files(count_files, frames, suffix='.unified.tsv', minimum_dete
   logging.info('We have detected %d genes'%(result.shape[0]))
   # fill NaNs with zeros
   if hasattr(result, 'sparse'):
-    result = result.fillna(0).astype(pd.SparseDtype(int))
+    result = result.fillna(0).astype(pd.SparseDtype("int64"))
   else:
-    result = result.fillna(0).astype(int)
+    result = result.fillna(0).astype("int64")
   
   # discard lowly expressed genes
-  result = result[((result > 0).sum(axis=1)/float(result.shape[1])) > minimum_detection_rate]
+  if hasattr(result, 'sparse'):
+    X = scipy.sparse.csr_matrix(result.values)
+    inds = (X.getnnz(axis=1) / result.shape[1]) > minimum_detection_rate
+    result = result[inds]
+  else:
+    result = result[((result > 0).sum(axis=1)/float(result.shape[1])) > minimum_detection_rate]
   logging.info('We keep %d genes after discarding the lowly expressed genes (detected in less than %.2f%% of the ST spots)'%(result.shape[0],100.0*minimum_detection_rate))
 
   # print the median sequencing depth
