@@ -401,7 +401,7 @@ if __name__ == '__main__':
   parser.add_argument('-v','--version',action='version',
                       version='%s %s'%(parser.prog,splotch.__version__))
   parser.add_argument('-V','--Visium',action='store_true',required=False,default=True,
-                      help='output in Visium format (default is standard ST)')
+                      help='output in Visium format (default)')
   parser.add_argument('-B','--hd-binning', type=str, required=False, default=None,
                       help='name of binning to use (Visium HD only)')
   parser.add_argument('-S','--st-v1', action='store_true', required=False,
