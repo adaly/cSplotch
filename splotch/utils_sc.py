@@ -126,9 +126,10 @@ def celltype_beta_priors(st_cell_types, st_gene_list, sc_adata=None, sc_group_ke
 			if filter_cells_kws is not None:
 				sc.pp.filter_cells(sc_adata, **filter_cells_kws)
 
-			sc.pp.normalize_total(sc_adata, target_depth)
+			sc.pp.normalize_total(sc_adata, target_sum=target_depth)
 			sc.pp.log1p(sc_adata)
 
+		sc_adata.var_names_make_unique()
 		sc_group_means, sc_group_stds = grouped_obs_mean_std(sc_adata, sc_group_key, 
 			layer=sc_layer, gene_symbols=sc_gene_symbols)
 

@@ -100,7 +100,7 @@ def read_rdump(filename):
         else:
           m = ndre.match(line)
           flat_arr, shape = m.groups()
-          flat_arr = numpy.array([to_numeric(t) for t in flat_arr.split(',')])
+          flat_arr = numpy.array([to_numeric(t) for t in flat_arr.split(',') if len(t)>0])
           shape = [int(t) for t in shape.split(',')]
           # Inversion of dimensions prior to reshaping necessary to recover intended rows, columns.
           # must be due to differing conventions between R, Python.
