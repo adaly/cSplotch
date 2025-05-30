@@ -15,6 +15,7 @@ def unique_annots_loupe(loupe_files):
 
 	for fh in loupe_files:
 		df = pd.read_csv(fh, header=0, sep=",")
+		df = df.dropna()
 		for a in df.iloc[:,1].values:
 			a = str(a)
 			if len(a)>0 and a.lower() != "undefined":
