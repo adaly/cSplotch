@@ -21,7 +21,8 @@ def round_series_retain_integer_sum(xs):
 
 # Simulate an ST spot from expression profiles of component cell types
 def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None, 
-	celltypes_present=None):
+	celltypes_present=None, 
+	cells_per_spot=30, min_frac=0.03):
 	'''
 	Parameters:
 	----------
@@ -32,11 +33,14 @@ def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None,
 	celltype_wts: (n_celltypes,) ndarray of dtype float, function, or None
 		if ndarray, proportion of each cell type present in spot.
 		if function, returns sample from distribution over celltype proportions (no arguments).
-		if None, proportions will be randomly sampled from a uniform distribution.
+		if None, proportions will be randomly sampled from a multinomial distribution with N=cells_per_spot.
 	celltypes_present: int, array-like of dtype int, or None
 		if celltype_wts is None, used to specify either the number of unique cell types 
 		present (int), or the specific cell types present (array of int in range 
 		[0,n_celltypes-1]). If None, all cell types may be included in random sample
+	cells_per_spot: int
+		number of cells per spot; used for multinomial sampling, effectively limits compositions between
+		1/cells_per_spot and 1.0.
 	
 	Returns:
 	----------
@@ -52,23 +56,52 @@ def simspot(celltype_profiles, spot_depth=10000, celltype_wts=None,
 	expmat = celltype_profiles / celltype_profiles.sum(axis=0)
 
 	if celltype_wts is None:
+		# Uniform random simulation
 		if celltypes_present is None:
 			W = np.random.random(n_celltypes)
-		
 		else:
 			W = np.zeros(n_celltypes)
 			
 			# Number of component cell types specified
 			if isinstance(celltypes_present, int):
-				selected = np.random.randint(n_celltypes, size=celltypes_present)
+				selected = np.random.choice(np.arange(n_celltypes), size=celltypes_present, replace=False)
 				W[selected] = np.random.random(celltypes_present)
-
+				
 			# Indices of component cell types specified
 			elif isinstance(celltypes_present, np.ndarray):
 				W[celltypes_present] = np.random.random(len(celltypes_present))
+			elif isinstance(celltypes_present, tuple):
+				celltype_library, n_present = celltypes_present
+				selected = np.random.choice(celltype_library, size=n_present, replace=False)
+				W[selected] = np.random.random(n_present)
 			
 			else:
 				raise ValueError('celltypes_present must be integer or array of integers')
+		        
+		# Zero out any entries below min_frac
+		W[W < min_frac] = 0
+		if W.max() == 0:
+			W = np.ones(n_celltypes)
+		
+		'''
+		# Multivariate normal simulation
+		if celltypes_present is None:
+			pvec = np.ones(n_celltypes) / n_celltypes
+		else:
+			pvec = np.zeros(n_celltypes)
+			# Number of present celltypes specified
+			if isinstance(celltypes_present, int):
+				selected = np.random.choice(np.arange(n_celltypes), celltypes_present, replace=False)
+				pvec[selected] = 1
+				pvec = pvec / celltypes_present
+			# Indices of present celltypes specified
+			elif isinstance(celltypes_present, np.ndarray):
+				pvec[celltypes_present] = 1
+				pvec = pvec / len(celltypes_present)
+			else:
+				raise ValueError('celltypes_present must be integer or array of integers')
+		W = np.random.multinomial(cells_per_spot, pvec) / cells_per_spot
+  		'''
 
 	elif callable(celltype_wts):
 		W = celltype_wts()
@@ -134,7 +167,17 @@ def simarray(celltype_profiles, aar_kwargs, aar_freq, n_spots=2000):
 		spots_in = int(np.rint(freq * n_spots))
 
 		for s in range(csum, csum+spots_in):
-			count_vec, celltype_wts = simspot(celltype_profiles, **aar_kwargs[aind])
+			# Randomly choose between 1 and N cell types to be present in spot (in uniformly random proportions)
+			if len(aar_kwargs) == 1:
+				# If we have only one AAR, then all cell types in celltype_profiles are fair game
+				spot_kwargs = aar_kwargs[0].copy()
+				spot_kwargs['celltypes_present'] = np.random.randint(1,n_celltypes+1)
+			else:
+				# If we have more than one AAR, only pick among cell types in current AAR
+				spot_kwargs = aar_kwargs[aind].copy()
+				celltype_library = aar_kwargs[aind]['celltypes_present']
+				spot_kwargs['celltypes_present'] = (celltype_library, np.random.randint(1, len(celltype_library)))
+			count_vec, celltype_wts = simspot(celltype_profiles, **spot_kwargs)
 
 			count_mat[:,s] = count_vec
 			comp_mat[:,s] = celltype_wts
@@ -191,6 +234,9 @@ def simspot_cells(adata_cells, celltype_label, ncells_in_spot=10, max_spot_depth
 	if isinstance(celltypes_present, int):
 		celltypes_present = np.random.choice(np.unique(adata_cells.obs[celltype_label]), celltypes_present, 
 			replace=False)
+	if isinstance(celltypes_present, tuple):
+		celltype_library, n_present = celltypes_present
+		celltypes_present = np.random.choice(celltype_library, n_present, replace=False)
 
 	if not hasattr(celltypes_present, '__iter__'):
 		raise ValueError('celltypes_present must be int, iterable, or None')
@@ -209,9 +255,13 @@ def simspot_cells(adata_cells, celltype_label, ncells_in_spot=10, max_spot_depth
 		W = celltype_wts
 	else:
 		raise ValueError('celltype_wts must be an array of length n_celltypes')
-
+	
+	# Zero out any entries with fewer than one cell
+	W[W < (1.0/ncells_in_spot)] = 0
+	if W.max() == 0:
+		W = np.ones(len(celltypes_present))
 	W /= np.sum(W)  # ensure weights sum to 1 (valid simplex)
-
+	
 	# Determine number of cells from each type and sample
 	ncells_per_type = round_series_retain_integer_sum(W * ncells_in_spot)
 	ncounts_per_type = np.zeros_like(ncells_per_type)
@@ -319,8 +369,11 @@ def simarray_cells(adata_cells, celltype_label, aar_kwargs, aar_freq=None, n_spo
 		spots_in = int(np.rint(freq * n_spots))
 
 		for s in range(csum, csum+spots_in):
-			count_vec, counts_per_type, cells_per_type = simspot_cells(
-				adata_cells, celltype_label, **aar_kwargs[aind])
+			spot_kwargs = aar_kwargs[aind].copy()
+			celltype_library = aar_kwargs[aind]['celltypes_present']
+			spot_kwargs['celltypes_present'] = (celltype_library, np.random.randint(1, len(celltype_library)))
+			#count_vec, counts_per_type, cells_per_type = simspot_cells(adata_cells, celltype_label, **aar_kwargs[aind])
+			count_vec, counts_per_type, cells_per_type = simspot_cells(adata_cells, celltype_label, **spot_kwargs)
 
 			count_mat[:,s] = np.rint(count_vec).astype(int)
 			aar_vec[s] = aind

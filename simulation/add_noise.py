@@ -19,7 +19,7 @@ cov = pickle.load(open(os.path.join(args.data_dir, 'covariates.p'), 'rb'))
 if args.scale > 0:
 	delta = np.random.normal(scale=args.scale, size=cov['E'].shape)
 	E2 = cov['E'] + delta
-	E2 = np.maximum(E2, 0)  # remove negative proportions
+	E2 = np.maximum(E2, 0) + 1e-6  # remove negative proportions
 else:
 	E2 = np.random.uniform(size=cov['E'].shape)
 E2 = E2 / E2.sum(axis=1)[:, None]  # valid simplexes

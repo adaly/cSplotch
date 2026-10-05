@@ -108,7 +108,7 @@ def scatter_recovery(recovery_dir, cluster_profiles, aar_profiles, select_pairs=
                 err = lambda_sig[:,a,i] * 1e6 
 
                 ax.axline([0, 0], [1, 1], c='r')        
-                ax.errorbar(x, y, yerr=err, fmt='o', markersize=1)
+                ax.errorbar(x, y, yerr=err, fmt='o', ecolor='gray', markersize=3)
 
                 r, p = pearsonr(x, y)
                 ax.text(500, 1.5, 'r = %.3f' % r, fontsize=10)
